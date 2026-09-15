@@ -15,6 +15,7 @@ optional **post‑Newtonian** precession term.
 ![NumPy](https://img.shields.io/badge/NumPy-vectorized-013243?logo=numpy&logoColor=white)
 ![Backend](https://img.shields.io/badge/BLAS-Accelerate-38e8ff)
 ![License](https://img.shields.io/badge/license-MIT-22c55e)
+![Continuous](https://img.shields.io/badge/mode-%E2%88%9E%20continuous-ffd15d)
 ![Status](https://img.shields.io/badge/status-proof--of--concept-9b5cff)
 
 <img src="assets/solar.gif" width="46%"/> <img src="assets/chaos.gif" width="46%"/>
@@ -105,6 +106,103 @@ approximation, not the full Einstein–Infeld–Hoffmann cross terms.
 
 ---
 
+## Architectural Innovation: Piecewise Volterra & Sliding Delay Buffers
+
+<div align="center">
+
+![continuous](assets/continuous.gif)
+
+*Continuous Mode — the global solve slid forward window‑by‑window, forever, on `O(1)` memory.*
+
+</div>
+
+A global Volterra solve is holistically accurate but **cannot run to infinity**. A
+step‑by‑step marcher runs forever but **drifts** and **chokes on retarded
+potentials**. Project AURA's Continuous Mode resolves this tension with a hybrid:
+**Piecewise Volterra Windowing** with a **sliding delay buffer**.
+
+### The dilemma
+
+| Approach | Infinite horizon | Retarded potentials | Long‑term drift |
+|---|:---:|:---:|:---:|
+| **Step‑by‑step** (RK4, Gauss–Jackson) | ✅ streams naturally | ❌ must interpolate an ever‑growing past‑memory tape at every micro‑step | ❌ local truncation error accumulates every step |
+| **Global Volterra** (one big window) | ❌ operator is `K × K` for `K` samples → `O(K²)` memory & compute | ✅ the whole history is *present*; delays are exact | ✅ the integral form re‑anchors to fixed endpoints |
+| **Piecewise Volterra** (this work) | ✅ **windowed, streams forever** | ✅ **sliding buffer holds exactly the past the delays need** | ✅ **each window re‑anchors to a fresh epoch** |
+
+The step‑by‑step cost of retardation is easy to underestimate: to evaluate
+$\mathbf a\big(\mathbf r(t-\tau)\big)$ a marcher must reach back into a growing tape
+of stored states and interpolate — every substep, for every pair, at every light
+delay. A global Volterra solve makes that free (the past is simply *part of the
+unknown*), but pays with an $O(K^2)$ dense causal operator that explodes as the
+horizon $K \to \infty$.
+
+### The solution — segment, anchor, slide
+
+Time is cut into fixed windows $W_k = [T_k,\, T_{k+1}]$ of width $W = T_{k+1}-T_k$.
+On each window we run the **local** global relaxation
+
+$$
+\mathbf{r}^{(n+1)}(t) \;=\; \mathbf{r}(T_k) \;+\; \mathbf{v}(T_k)\,(t - T_k)
+\;+\; \int_{T_k}^{t} (t-s)\,
+\mathbf{a}\!\Big(s,\; \mathbf{r}^{(n)}_{\text{buffer}}(s - \tau)\Big)\, ds ,
+\qquad t \in [T_k, T_{k+1}] ,
+$$
+
+where the retarded lookup $\mathbf{r}^{(n)}_{\text{buffer}}(s-\tau)$ reads from the
+**current window iterate** when $s-\tau \ge T_k$, and otherwise from the **sliding
+delay buffer** — the physically real tail of already‑converged history. Once the
+window has relaxed:
+
+1. **Anchor.** Freeze the final vector $\big(\mathbf r(T_{k+1}),\, \mathbf v(T_{k+1})\big)$ as the new epoch — the initial condition for $W_{k+1}$.
+2. **Slide the buffer.** Keep only the trailing slice of length
+   $$ \Delta_\text{buf} \;=\; \eta \,\tau_{\max} \;=\; \eta\,\frac{\max_{i,j}\lVert \mathbf r_i - \mathbf r_j\rVert}{c}, \qquad \eta \approx 2.5 , $$
+   i.e. exactly the light‑crossing history the next window's retarded potentials can reach ($c\,\tau_{\max}$ of past), resampled onto a fixed grid.
+3. **Discard.** Everything older than $\Delta_\text{buf}$ is dropped. The window itself is emitted to the renderer and released.
+
+```
+        past  ─────────────────────────────►  future
+                       ┌───────────────┐
+   … discarded …  ▓▓▓▓▓│   window W_k   │      W_{k+1}  (not yet computed)
+                  └─┬─┘ └───────┬───────┘
+             delay buffer      epoch (r,v) @ T_{k+1}  ──►  seeds next window
+             (length η·τ_max)   the buffer's leading edge slides here after solve
+```
+
+### Why this is the important part
+
+Let the window hold $W$ samples and the buffer $B$ samples with $B \ll W$. Then:
+
+$$
+\underbrace{\text{compute}}_{\text{per window}} = O(W^2) \;\text{(vs. } O(t^2)\text{ global)}
+\qquad
+\underbrace{\text{live memory}}_{\text{steady state}} = O(W + B) = O(1) \;\text{in } t .
+$$
+
+- **`O(1)` memory over an infinite horizon.** The operator matrices, the window, and
+  the buffer are all fixed size. RAM does not grow no matter how long you run —
+  the loop can spin for a million windows on a laptop.
+- **Bounded, non‑accumulating cost.** Each window costs the *same* $O(W^2)$; there is
+  no $O(t^2)$ blow‑up and no ever‑lengthening memory tape to interpolate.
+- **Drift resistance.** Because each window is solved as a *boundary‑anchored
+  integral equation* (not a chain of local extrapolations), truncation error does
+  not compound the way it does in RK‑style marchers — the relaxation re‑anchors to
+  a fresh epoch every window.
+- **Holistic delay resolution.** Within a window the retarded potentials still see
+  the *entire* trajectory at once (global), and the sliding buffer carries the real
+  past across the seam — so finite‑speed gravity is resolved consistently across
+  window boundaries, not faked by ballistic guessing.
+
+The result is the numerical character of Waveform Relaxation — global, drift‑
+resistant, delay‑exact — running with the runtime and memory profile of a real‑time
+flight computer. Flip **Continuous Mode** on and it never stops.
+
+> Requirement: the design assumes $\Delta_\text{buf} \le W$ (the longest light delay
+> is shorter than one window), which holds for every preset. AURA sizes the buffer
+> from the live system diameter each window, so it adapts automatically; if a delay
+> ever exceeded the buffer it is clamped to the oldest retained sample.
+
+---
+
 ## Is the physics real? (yes — and measured)
 
 This repo does **not** hand‑wave. The claims are checked in `tests/test_physics.py`
@@ -118,6 +216,9 @@ and reproduced by `python scripts/tune.py`:
 | **Newtonian** 3‑body through a deep chaotic encounter | energy drift `≈ 2e‑4` |
 | Same system with **retarded** gravity | energy drift `≈ 0.9` |
 | 1PN term on an eccentric orbit | **prograde** perihelion advance ✓ |
+| **Continuous stream** window joins | `C⁰` continuity, gap `< 1e‑9` |
+| **Continuous stream** memory over 30+ windows | bounded (delay buffer never grows) |
+| Stream vs. batch on a stable orbit | endpoints agree to `< 5e‑3` |
 
 The most interesting line is the pair in the middle: with **instantaneous** gravity
 the global integrator conserves energy to ~`10⁻⁴` *even through chaotic close
@@ -135,11 +236,12 @@ truth about the model it is given.
 ## Features
 
 - **Four presets:** Inner Solar System · Earth‑Moon‑Spacecraft · Deep Chaos 3‑body · randomised Sandbox.
+- **∞ Continuous Mode:** Piecewise Volterra Windowing with a sliding delay buffer — runs *indefinitely* on `O(1)` memory (see the manifesto above).
 - **Sleek dark cockpit** (`customtkinter`) with an embedded, blitted Matplotlib canvas.
-- **Live controls:** scenario selector, relaxation‑depth slider, damping `w`, retardation & 1PN switches, playback speed, play/pause/restart, sandbox re‑roll.
-- **Two‑phase animation:** watch the *waveform relaxation*, then *propagate* comet heads along the converged path.
-- **Non‑blocking:** solves run on a worker thread + queue; the UI never freezes.
-- **Headless tooling:** GIF renderer, tuning harness, and a `pytest` validation suite.
+- **Live controls:** scenario selector, relaxation‑depth slider, damping `w`, retardation & 1PN switches, continuous‑mode switch, playback speed, play/pause/restart, sandbox re‑roll.
+- **Two‑phase animation:** watch the *waveform relaxation*, then *propagate* comet heads along the converged path — or a *following, endless* stream in Continuous Mode.
+- **Non‑blocking:** batch solves and the infinite stream both run on a worker thread + bounded queue (backpressure paces compute to the display); the UI never freezes.
+- **Headless tooling:** GIF renderer (incl. `continuous`), tuning harness, and a `pytest` validation suite (17 tests).
 
 ---
 
@@ -169,11 +271,17 @@ brew install python-tk            # Homebrew python
 ### Other commands
 
 ```bash
-python scripts/render_gif.py all              # regenerate assets/*.gif
+python scripts/render_gif.py all              # regenerate assets/*.gif (+ continuous.gif)
 python scripts/render_gif.py "Deep Chaos (3-Body)" out.gif
+python scripts/render_gif.py continuous "Deep Chaos (3-Body)" cont.gif   # infinite-run clip
 python scripts/tune.py                         # convergence / energy report
-python -m pytest -q                            # run the validation suite
+python -m pytest -q                            # run the validation suite (17 tests)
 ```
+
+In the app, flip **Continuous Mode (∞ infinite run)** to switch from the
+finite two‑phase animation to the endless Piecewise‑Volterra stream — the view
+follows the system, the HUD shows the live window index, sim‑time and sliding
+delay‑buffer length, and it runs until you toggle it off.
 
 ---
 
@@ -184,15 +292,15 @@ aura-volterra-engine/
 ├── main.py                     # customtkinter cockpit (entry point)
 ├── aura_engine/
 │   ├── operators.py            # Volterra integral operators (C, K₂ = C·C)
-│   ├── physics.py              # Body, VolterraSystem, retardation, 1PN, relaxation
+│   ├── physics.py              # Body, VolterraSystem (batch) + PiecewiseVolterraStream (∞)
 │   ├── presets.py              # the four scenarios + engine settings
-│   └── viz.py                  # shared Matplotlib scene (app + GIFs)
+│   └── viz.py                  # shared scenes: TrajectoryScene (batch) + ContinuousScene (∞)
 ├── scripts/
-│   ├── render_gif.py           # headless GIF export
+│   ├── render_gif.py           # headless GIF export (batch + `continuous`)
 │   └── tune.py                 # per-preset convergence/energy diagnostics
-├── tests/test_physics.py       # operator, orbit, energy, PN, preset tests
+├── tests/test_physics.py       # operators, orbit, energy, PN, streaming, preset tests
 ├── requirements.txt
-└── assets/                     # generated animations
+└── assets/                     # generated animations (incl. continuous.gif)
 ```
 
 ---
@@ -219,14 +327,33 @@ picard     = R0 + V0 * t + apply_operator(K2, A)  # one BLAS gemm over the time 
 R          = (1 - w) * R + w * picard             # under-relax
 ```
 
+And the **infinite** run is just a loop over windows that never ends:
+
+```python
+from aura_engine import PiecewiseVolterraStream, get_preset
+
+cfg    = get_preset("Deep Chaos (3-Body)")
+stream = PiecewiseVolterraStream.from_config(
+    cfg, iterations=cfg.iterations, relaxation=cfg.relaxation,
+    use_retardation=True, use_pn=False)
+
+for window in stream:                 # never terminates; RAM stays O(1)
+    plot(window.t, window.trajectory) # each window is a slice [T_k, T_{k+1}]
+    # stream.buffer_span  -> current sliding delay-buffer length (c·τ_max)
+    # stream.window_index -> monotonically increasing forever
+```
+
 ---
 
 ## Limitations & future work
 
 - **Convergence radius.** A single global window converges up to ~one orbit; longer
-  horizons use segmented windows. Chebyshev nodes + Clenshaw–Curtis quadrature
-  (true MCPI) would extend each window dramatically over the current uniform‑grid
-  trapezoid.
+  and infinite horizons use segmented / **Continuous‑Mode** windows. Chebyshev nodes
+  + Clenshaw–Curtis quadrature (true MCPI) would extend each window dramatically over
+  the current uniform‑grid trapezoid.
+- **Delay‑buffer assumption.** Continuous Mode assumes the longest light delay is
+  shorter than one window (`Δ_buf ≤ W`); true for all presets. Delays longer than the
+  retained buffer are clamped to its oldest sample.
 - **Retardation is a toy.** See the honesty note above — no aberration cancellation.
 - **1PN is reduced.** Full EIH cross terms and spin are not modelled.
 - **Softening.** A Plummer softening length regularises close encounters; it is a

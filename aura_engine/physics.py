@@ -72,6 +72,44 @@ def _energy_drift(e: np.ndarray) -> float:
     return float(e.max() - e.min())
 
 
+def pair_acceleration(
+    ri: np.ndarray,
+    rj: np.ndarray,
+    mj: float,
+    G: float,
+    eps2: float,
+    *,
+    vi: Optional[np.ndarray] = None,
+    vj: Optional[np.ndarray] = None,
+    c: float = 2.99792458e8,
+    use_pn: bool = False,
+) -> np.ndarray:
+    """Acceleration on body ``i`` due to body ``j`` along a whole time axis.
+
+    ``ri``/``rj`` are ``(n, 3)`` position histories (``rj`` already resolved to the
+    retarded position if finite-``c`` gravity is active). Softened Newtonian core
+    plus an optional reduced 1PN (Schwarzschild) term. Shared by the batch
+    :class:`VolterraSystem` and the streaming :class:`PiecewiseVolterraStream` so
+    both use *identical* physics.
+    """
+    d = rj - ri                                   # vector from i toward j
+    r2 = np.einsum("kd,kd->k", d, d) + eps2
+    inv_r3 = r2 ** -1.5
+    a = (G * mj) * d * inv_r3[:, None]
+    if use_pn:
+        rvec = -d                                 # source -> target
+        r = np.sqrt(r2)
+        vrel = vi - vj
+        v2 = np.einsum("kd,kd->k", vrel, vrel)
+        rv = np.einsum("kd,kd->k", rvec, vrel)
+        gm = G * mj
+        pref = gm / (c ** 2 * r ** 3)
+        a = a + pref[:, None] * (
+            ((4.0 * gm / r) - v2)[:, None] * rvec + 4.0 * rv[:, None] * vrel
+        )
+    return a
+
+
 # --------------------------------------------------------------------------- #
 # Body
 # --------------------------------------------------------------------------- #
@@ -242,32 +280,13 @@ class VolterraSystem:
             for j in range(N):
                 if i == j:
                     continue
-                mj = self.masses[j]
-
-                if self.use_retardation:
-                    rj = self._retarded_position(R, i, j, ri)
-                else:
-                    rj = R[:, j, :]
-
-                d = rj - ri                       # vector from i toward j
-                r2 = np.einsum("kd,kd->k", d, d) + self.eps2
-                inv_r3 = r2 ** -1.5
-                A[:, i, :] += (self.G * mj) * d * inv_r3[:, None]
-
-                if self.use_pn:
-                    # Reduced 1PN (Schwarzschild) pairwise term. rvec points from
-                    # the source j to target i (opposite of Newtonian direction).
-                    rvec = -d
-                    r = np.sqrt(r2)
-                    vrel = vi - V[:, j, :]
-                    v2 = np.einsum("kd,kd->k", vrel, vrel)
-                    rv = np.einsum("kd,kd->k", rvec, vrel)
-                    gm = self.G * mj
-                    pref = gm / (self.c ** 2 * r ** 3)
-                    A[:, i, :] += pref[:, None] * (
-                        ((4.0 * gm / r) - v2)[:, None] * rvec
-                        + 4.0 * rv[:, None] * vrel
-                    )
+                rj = self._retarded_position(R, i, j, ri) if self.use_retardation \
+                    else R[:, j, :]
+                vj = V[:, j, :] if need_v else None
+                A[:, i, :] += pair_acceleration(
+                    ri, rj, self.masses[j], self.G, self.eps2,
+                    vi=vi, vj=vj, c=self.c, use_pn=self.use_pn,
+                )
         return A
 
     # ---------------------------------------------------------------- #
@@ -418,3 +437,251 @@ class VolterraSystem:
             converged=converged_all,
             iterations=iterations,
         )
+
+
+# --------------------------------------------------------------------------- #
+# Window result (one slice of a continuous stream)
+# --------------------------------------------------------------------------- #
+@dataclass
+class WindowResult:
+    """One relaxed window ``[T_k, T_{k+1}]`` emitted by the streaming engine."""
+
+    index: int
+    t: np.ndarray               # (m,) global time samples
+    trajectory: np.ndarray      # (m, N, 3)
+    velocity: np.ndarray        # (m, N, 3)
+    residual: float             # final relaxation residual on this window
+    energy_drift: float         # Newtonian drift across this window
+    buffer_span: float          # length of the delay buffer carried forward
+    converged: bool
+
+
+# --------------------------------------------------------------------------- #
+# Piecewise Volterra streaming engine  (continuous / infinite run)
+# --------------------------------------------------------------------------- #
+class PiecewiseVolterraStream:
+    """Infinite-horizon propagator via **Piecewise Volterra Windowing**.
+
+    Rather than solving one huge global window (``O(t^2)`` memory/compute), time
+    is cut into fixed windows ``W_k = [T_k, T_{k+1}]``. Each window is relaxed
+    globally by damped Picard, then:
+
+    1. the **final state** ``(r(T_{k+1}), v(T_{k+1}))`` becomes the next epoch;
+    2. a **sliding delay buffer** of length ``~c*tau_max`` (the tail of the
+       just-computed trajectory) is retained so the retarded potentials
+       ``r(t - tau)`` in the next window read *real* past positions, not a
+       ballistic guess;
+    3. everything older than the buffer is discarded.
+
+    This bounds cost per window to ``O(W^2)`` and memory to ``O(1)`` while
+    preserving the holistic, drift-resistant delay resolution of the global
+    Volterra solve -- the numerics of waveform relaxation with the runtime
+    profile of a real-time flight computer.
+
+    Call :meth:`step` repeatedly (it never stops) or iterate the object.
+    """
+
+    def __init__(
+        self,
+        bodies: list[Body],
+        *,
+        G: float,
+        c: float,
+        softening: float,
+        use_retardation: bool,
+        use_pn: bool,
+        relaxation: float,
+        window_span: float,
+        window_samples: int,
+        iterations: int,
+        buffer_safety: float = 2.5,
+        max_buffer_samples: int = 256,
+        tol: float = 1e-9,
+    ) -> None:
+        if window_samples < 8:
+            raise ValueError("window_samples must be >= 8")
+        self.bodies = list(bodies)
+        self.N = len(bodies)
+        self.masses = np.array([b.mass for b in bodies], dtype=np.float64)
+        self.G, self.c = float(G), float(c)
+        self.softening = float(softening)
+        self.eps2 = float(softening) ** 2
+        self.use_retardation = bool(use_retardation)
+        self.use_pn = bool(use_pn)
+        self.w = float(relaxation)
+        self.window_span = float(window_span)
+        self.m = int(window_samples)
+        self.iterations = int(iterations)
+        self.tol = float(tol)
+        self.buffer_safety = float(buffer_safety)
+        self.max_buffer_samples = int(max_buffer_samples)
+
+        # Local window grid [0, window_span] and its Volterra operators (built once).
+        self.local_t = np.linspace(0.0, self.window_span, self.m)
+        self.dt = float(self.local_t[1] - self.local_t[0])
+        self.C, self.K2 = build_integral_operators(self.local_t)
+
+        self._R0 = np.array([b.position for b in bodies], dtype=np.float64)
+        self._V0 = np.array([b.velocity for b in bodies], dtype=np.float64)
+        self.reset()
+
+    # ------------------------------------------------------------------ #
+    def reset(self) -> None:
+        """Rewind the stream to the initial epoch and re-seed the buffer."""
+        self.R_epoch = self._R0.copy()
+        self.V_epoch = self._V0.copy()
+        self.t_epoch = 0.0
+        self.window_index = 0
+        self._seed_buffer()
+
+    @classmethod
+    def from_config(cls, cfg, iterations, relaxation, use_retardation, use_pn,
+                    window_samples: int = 64) -> "PiecewiseVolterraStream":
+        """Build a stream from a :class:`~aura_engine.presets.PresetConfig`.
+
+        The window keeps the batch grid's time resolution (``dt``) but only
+        ``window_samples`` points per slice, so every scenario streams at the
+        same fidelity it was tuned for.
+        """
+        dt = cfg.t_span / (cfg.n_samples - 1)
+        window_samples = int(min(window_samples, cfg.n_samples))
+        window_span = dt * (window_samples - 1)
+        return cls(
+            cfg.bodies, G=cfg.G, c=cfg.c, softening=cfg.softening,
+            use_retardation=use_retardation, use_pn=use_pn, relaxation=relaxation,
+            window_span=window_span, window_samples=window_samples,
+            iterations=iterations,
+        )
+
+    # ------------------------------------------------------------------ #
+    # Delay buffer management
+    # ------------------------------------------------------------------ #
+    def _max_delay(self, R: np.ndarray) -> float:
+        """Largest light-travel delay tau_max = max pairwise distance / c."""
+        if not self.use_retardation or self.N < 2:
+            return 0.0
+        maxd = 0.0
+        for i in range(self.N):
+            for j in range(i + 1, self.N):
+                maxd = max(maxd, float(np.linalg.norm(R[i] - R[j])))
+        return maxd / self.c
+
+    def _buffer_length(self, R_epoch: np.ndarray) -> tuple[float, int]:
+        """Choose the buffer span (~safety*tau_max) and its sample count."""
+        tau_max = self._max_delay(R_epoch)
+        span = self.buffer_safety * tau_max
+        span = max(span, 2.0 * self.dt)                 # never degenerate
+        n = int(np.clip(round(span / self.dt) + 1, 8, self.max_buffer_samples))
+        return span, n
+
+    def _seed_buffer(self) -> None:
+        """Initialise the buffer with a ballistic pre-history before t=0."""
+        span, n = self._buffer_length(self.R_epoch)
+        bt = np.linspace(self.t_epoch - span, self.t_epoch, n)
+        # ballistic: r(t) = r0 + v0 (t - t_epoch)
+        self.buf_t = bt
+        self.buf_R = (self.R_epoch[None, :, :]
+                      + (bt - self.t_epoch)[:, None, None] * self.V_epoch[None, :, :])
+        self.buffer_span = span
+
+    def _update_buffer(self, tg: np.ndarray, R: np.ndarray, new_epoch: float) -> None:
+        """Retain only the last ``buffer_span`` of history, resampled to fixed size."""
+        span, n = self._buffer_length(R[-1])
+        # concatenate old buffer with the new window (drop duplicated boundary)
+        all_t = np.concatenate([self.buf_t, tg[1:]])
+        all_R = np.concatenate([self.buf_R, R[1:]])
+        lo = new_epoch - span
+        keep = all_t >= lo - 1e-12
+        ct, cR = all_t[keep], all_R[keep]
+        new_t = np.linspace(lo, new_epoch, n)
+        new_R = np.empty((n, self.N, 3), dtype=np.float64)
+        for i in range(self.N):
+            for d in range(3):
+                new_R[:, i, d] = np.interp(new_t, ct, cR[:, i, d])
+        self.buf_t, self.buf_R, self.buffer_span = new_t, new_R, span
+
+    def _sample_source(self, R_win: np.ndarray, j: int, tq: np.ndarray) -> np.ndarray:
+        """Position of body ``j`` at global query times ``tq``.
+
+        Interpolates across the concatenation of the *delay buffer* (the real
+        past) and the *current window iterate*. Queries older than the buffer are
+        clamped to its oldest sample (delay exceeded the retained history).
+        """
+        tg = self.t_epoch + self.local_t
+        # buffer ends exactly at t_epoch == tg[0]; drop the duplicate join point
+        cat_t = np.concatenate([self.buf_t[:-1], tg])
+        out = np.empty((tq.size, 3), dtype=np.float64)
+        for d in range(3):
+            cat = np.concatenate([self.buf_R[:-1, j, d], R_win[:, j, d]])
+            out[:, d] = np.interp(tq, cat_t, cat)
+        return out
+
+    def _retarded_position(self, R_win, i, j, ri) -> np.ndarray:
+        tg = self.t_epoch + self.local_t
+        dist = np.linalg.norm(R_win[:, j, :] - ri, axis=1)
+        rj = self._sample_source(R_win, j, tg - dist / self.c)
+        dist = np.linalg.norm(rj - ri, axis=1)                 # one refinement
+        return self._sample_source(R_win, j, tg - dist / self.c)
+
+    # ------------------------------------------------------------------ #
+    def _accelerations(self, R_win: np.ndarray, V_win: Optional[np.ndarray]) -> np.ndarray:
+        A = np.zeros((self.m, self.N, 3), dtype=np.float64)
+        for i in range(self.N):
+            ri = R_win[:, i, :]
+            vi = V_win[:, i, :] if self.use_pn else None
+            for j in range(self.N):
+                if i == j:
+                    continue
+                rj = (self._retarded_position(R_win, i, j, ri)
+                      if self.use_retardation else R_win[:, j, :])
+                vj = V_win[:, j, :] if self.use_pn else None
+                A[:, i, :] += pair_acceleration(
+                    ri, rj, self.masses[j], self.G, self.eps2,
+                    vi=vi, vj=vj, c=self.c, use_pn=self.use_pn,
+                )
+        return A
+
+    # ------------------------------------------------------------------ #
+    def step(self) -> WindowResult:
+        """Relax the next window, advance the epoch, slide the buffer. Never stops."""
+        t_col = self.local_t[:, None, None]
+        base = self.R_epoch[None, :, :] + t_col * self.V_epoch[None, :, :]
+        R = base.copy()                                   # ballistic predictor
+        scale = max(np.linalg.norm(R) / np.sqrt(R.size), 1e-30)
+
+        residual, converged = float("nan"), False
+        A = np.zeros_like(R)
+        for _ in range(self.iterations):
+            V = np.gradient(R, self.local_t, axis=0) if self.use_pn else None
+            A = self._accelerations(R, V)
+            R_new = (1.0 - self.w) * R + self.w * (base + apply_operator(self.K2, A))
+            residual = float(np.linalg.norm(R_new - R) / np.sqrt(R.size) / scale)
+            R = R_new
+            if residual < self.tol:
+                converged = True
+                break
+
+        V_final = self.V_epoch[None, :, :] + apply_operator(self.C, self._accelerations(R, None))
+        tg = self.t_epoch + self.local_t
+        e = newtonian_energy(self.masses, R, V_final, self.G, self.eps2)
+
+        result = WindowResult(
+            index=self.window_index, t=tg.copy(), trajectory=R.copy(),
+            velocity=V_final.copy(), residual=residual, energy_drift=_energy_drift(e),
+            buffer_span=self.buffer_span, converged=converged,
+        )
+
+        # advance epoch + slide the delay buffer, then discard the window
+        new_epoch = self.t_epoch + self.window_span
+        self._update_buffer(tg, R, new_epoch)
+        self.R_epoch = R[-1].copy()
+        self.V_epoch = V_final[-1].copy()
+        self.t_epoch = new_epoch
+        self.window_index += 1
+        return result
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> WindowResult:
+        return self.step()

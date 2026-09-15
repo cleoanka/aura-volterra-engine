@@ -39,8 +39,10 @@ except ModuleNotFoundError:  # pragma: no cover - friendly guidance
     )
     raise
 
-from aura_engine import presets                          # noqa: E402
-from aura_engine.viz import ACCENT, BG, GRID, MUTED, PANEL, TEXT, TrajectoryScene  # noqa: E402
+from aura_engine import PiecewiseVolterraStream, presets  # noqa: E402
+from aura_engine.viz import (                              # noqa: E402
+    ACCENT, BG, GRID, MUTED, PANEL, TEXT, ContinuousScene, TrajectoryScene,
+)
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
@@ -67,6 +69,16 @@ class AuraApp(ctk.CTk):
         self.result = None
         self.cfg = None
         self._result_queue: queue.Queue = queue.Queue()
+
+        # --- continuous / infinite-run streaming state --------------------- #
+        self._continuous = False
+        self._stream = None
+        self._stream_thread: threading.Thread | None = None
+        self._stream_stop = threading.Event()
+        self._stream_pause = threading.Event()
+        self._window_queue: queue.Queue = queue.Queue(maxsize=3)
+        self._cont_job = None
+        self._windows_seen = 0
 
         self._build_ui()
         self._load_preset_defaults(self.preset_var.get())  # tuned depth/damping
@@ -140,22 +152,26 @@ class AuraApp(ctk.CTk):
         self.pn_switch = ctk.CTkSwitch(panel, text="Post-Newtonian (1PN precession)",
                                        font=self.mono_small, command=self._schedule_solve,
                                        progress_color=ACCENT)
-        self.pn_switch.grid(row=12, column=0, pady=(0, 10), **pad)
+        self.pn_switch.grid(row=12, column=0, pady=(0, 8), **pad)
+        self.cont_switch = ctk.CTkSwitch(
+            panel, text="Continuous Mode  (∞ infinite run)", font=self.mono_small,
+            command=self._on_continuous_toggle, progress_color="#ffd15d")
+        self.cont_switch.grid(row=13, column=0, pady=(0, 10), **pad)
 
         # --- speed ----------------------------------------------------- #
         self.speed_label = ctk.CTkLabel(panel, text="PLAYBACK SPEED   2x",
                                         font=self.mono_small, text_color=TEXT, anchor="w")
-        self.speed_label.grid(row=13, column=0, pady=(4, 2), **pad)
+        self.speed_label.grid(row=14, column=0, pady=(4, 2), **pad)
         self.speed_slider = ctk.CTkSlider(panel, from_=1, to=8, number_of_steps=7,
                                           command=self._on_speed, button_color=ACCENT,
                                           progress_color="#1b3358")
         self.speed_slider.set(2)
-        self.speed_slider.grid(row=14, column=0, pady=(0, 12), **pad)
-        self._divider(panel, 15)
+        self.speed_slider.grid(row=15, column=0, pady=(0, 12), **pad)
+        self._divider(panel, 16)
 
         # --- transport buttons ---------------------------------------- #
         btns = ctk.CTkFrame(panel, fg_color="transparent")
-        btns.grid(row=16, column=0, pady=(14, 6), **pad)
+        btns.grid(row=17, column=0, pady=(14, 6), **pad)
         btns.grid_columnconfigure((0, 1), weight=1)
         self.play_btn = ctk.CTkButton(btns, text="⏸  Pause", font=self.mono,
                                       command=self._toggle_play, fg_color="#1b3358",
@@ -167,14 +183,14 @@ class AuraApp(ctk.CTk):
         self.reroll_btn = ctk.CTkButton(panel, text="🎲  Re-roll sandbox", font=self.mono,
                                         command=self._reroll, fg_color="#12203a",
                                         hover_color="#1b3358")
-        self.reroll_btn.grid(row=17, column=0, pady=(2, 10), **pad)
+        self.reroll_btn.grid(row=18, column=0, pady=(2, 10), **pad)
 
         # --- status readout ------------------------------------------- #
-        self._divider(panel, 18)
+        self._divider(panel, 19)
         self.status = ctk.CTkLabel(panel, text="", font=self.mono_small,
                                    text_color=ACCENT, wraplength=294, justify="left",
                                    anchor="w")
-        self.status.grid(row=19, column=0, pady=(14, 20), **pad)
+        self.status.grid(row=20, column=0, pady=(14, 20), **pad)
 
         # --- plot area ------------------------------------------------- #
         plot_frame = ctk.CTkFrame(self, fg_color=BG, corner_radius=0)
@@ -186,6 +202,7 @@ class AuraApp(ctk.CTk):
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
         self.scene = TrajectoryScene(self.fig, self.ax)
         self.scene.stride = 2
+        self.cont_scene = ContinuousScene(self.fig, self.ax)
 
     def _divider(self, parent, row: int) -> None:
         ctk.CTkFrame(parent, height=1, fg_color=GRID).grid(
@@ -218,14 +235,33 @@ class AuraApp(ctk.CTk):
         self._schedule_solve()
 
     def _on_speed(self, v: float) -> None:
-        self.scene.stride = int(v)
+        self.scene.stride = int(v)               # batch: propagation stride
         self.speed_label.configure(text=f"PLAYBACK SPEED   {int(v)}x")
+
+    def _on_continuous_toggle(self) -> None:
+        self._continuous = bool(self.cont_switch.get())
+        self._schedule_solve()
 
     def _reroll(self) -> None:
         self._sandbox_seed = (self._sandbox_seed + 1) % 100_000
         self._solve_async()
 
     def _toggle_play(self) -> None:
+        if self._continuous:
+            if self._stream is None:
+                return
+            if self._stream_pause.is_set():      # resume
+                self._stream_pause.clear()
+                if self._cont_job is None:
+                    self._cont_job = self.after(30, self._continuous_tick)
+                self.play_btn.configure(text="⏸  Pause")
+            else:                                # pause (also idles the worker)
+                self._stream_pause.set()
+                if self._cont_job is not None:
+                    self.after_cancel(self._cont_job)
+                    self._cont_job = None
+                self.play_btn.configure(text="▶  Play")
+            return
         if self.anim is None:
             return
         if self.scene.playing:
@@ -238,7 +274,9 @@ class AuraApp(ctk.CTk):
             self.play_btn.configure(text="⏸  Pause")
 
     def _reset(self) -> None:
-        if self.result is not None:
+        if self._continuous:
+            self._start_continuous()             # rewind: restart the stream at t=0
+        elif self.result is not None:
             self.scene.reset()
 
     # ------------------------------------------------------------------ #
@@ -251,6 +289,11 @@ class AuraApp(ctk.CTk):
 
     def _solve_async(self) -> None:
         self._solve_job = None
+        if self._continuous:                    # infinite-run streaming path
+            self._stop_batch()
+            self._start_continuous()
+            return
+        self._stop_continuous()                 # leaving continuous mode
         if self._solving:                       # coalesce: retry shortly
             self._pending = True
             return
@@ -330,7 +373,120 @@ class AuraApp(ctk.CTk):
             self._schedule_solve()
 
     # ------------------------------------------------------------------ #
+    # Continuous / infinite-run streaming (Piecewise Volterra Windowing)
+    # ------------------------------------------------------------------ #
+    def _stop_batch(self) -> None:
+        if self.anim is not None:
+            self.anim.event_source.stop()
+            self.anim = None
+
+    def _stop_continuous(self) -> None:
+        """Signal the worker to exit, stop the tick loop, and drain the queue."""
+        self._stream_stop.set()
+        self._stream_pause.clear()
+        if self._cont_job is not None:
+            self.after_cancel(self._cont_job)
+            self._cont_job = None
+        self._stream_thread = None
+        self._stream = None
+        try:
+            while True:
+                self._window_queue.get_nowait()
+        except queue.Empty:
+            pass
+
+    def _start_continuous(self) -> None:
+        """Build a fresh Piecewise-Volterra stream and start worker + tick loop."""
+        self._stop_continuous()                 # tear down any previous stream
+
+        name = self.preset_var.get()
+        iters = int(self.iter_slider.get())
+        relax = float(self.relax_slider.get())
+        retard = bool(self.retard_switch.get())
+        pn = bool(self.pn_switch.get())
+        seed = self._sandbox_seed
+
+        cfg = (presets.sandbox(seed=seed) if name == "Custom Sandbox"
+               else presets.get_preset(name))
+        cfg.use_retardation, cfg.use_pn, cfg.relaxation = retard, pn, relax
+        try:
+            stream = PiecewiseVolterraStream.from_config(
+                cfg, iterations=iters, relaxation=relax,
+                use_retardation=retard, use_pn=pn)
+        except Exception as exc:  # pragma: no cover - defensive
+            self.status.configure(text_color="#ff6b6b", text=f"✗ STREAM FAILED\n{exc}")
+            return
+
+        self.cfg = cfg
+        self.desc.configure(text=cfg.description)
+        self.cont_scene.build(cfg)
+        self.canvas.draw()
+
+        # fresh synchronisation primitives for this run
+        self._stream = stream
+        self._stream_stop = threading.Event()
+        self._stream_pause = threading.Event()
+        self._window_queue = queue.Queue(maxsize=3)
+        self.play_btn.configure(text="⏸  Pause")
+        self.status.configure(text_color="#ffd15d", text="◍ STREAMING ∞  (spinning up…)")
+
+        stop, pause, q = self._stream_stop, self._stream_pause, self._window_queue
+
+        def worker() -> None:
+            # Off-thread: steps the stream forever, feeding the bounded queue.
+            # Queue backpressure paces compute to the display; NO Tk calls here.
+            while not stop.is_set():
+                if pause.is_set():
+                    stop.wait(0.05)
+                    continue
+                try:
+                    win = stream.step()
+                except Exception:  # pragma: no cover - defensive
+                    return
+                while not stop.is_set():
+                    try:
+                        q.put(win, timeout=0.1)
+                        break
+                    except queue.Full:
+                        continue
+
+        self._stream_thread = threading.Thread(target=worker, daemon=True)
+        self._stream_thread.start()
+        self._cont_job = self.after(30, self._continuous_tick)
+
+    def _continuous_tick(self) -> None:
+        """Main-thread render loop: pull ready windows, plot, follow, reschedule."""
+        if not self._continuous or self._stream is None:
+            return
+        per = max(1, int(self.speed_slider.get()))      # windows consumed per tick
+        got = 0
+        for _ in range(per):
+            try:
+                win = self._window_queue.get_nowait()
+            except queue.Empty:
+                break
+            self.cont_scene.push(win)
+            self._windows_seen = win.index
+            got += 1
+        if got:
+            self.cont_scene.redraw()
+            self.canvas.draw_idle()
+            if self._windows_seen % 10 == 0:
+                w = self.cont_scene.last
+                self.status.configure(
+                    text_color=ACCENT,
+                    text=(f"∞ CONTINUOUS  ·  window {w.index}\n"
+                          f"sim t {w.t[-1]/self.cfg.time_unit:.1f} {self.cfg.time_label}"
+                          f"   ({self.cont_scene.N} bodies)\n"
+                          f"delay buffer {w.buffer_span/self.cfg.time_unit:.3g} "
+                          f"{self.cfg.time_label} (sliding)\n"
+                          f"drift/window {w.energy_drift:.2e}"),
+                )
+        self._cont_job = self.after(34, self._continuous_tick)
+
+    # ------------------------------------------------------------------ #
     def on_close(self) -> None:
+        self._stop_continuous()
         if self.anim is not None:
             self.anim.event_source.stop()
         self.destroy()

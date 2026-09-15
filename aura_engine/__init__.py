@@ -9,15 +9,23 @@ and a reduced post-Newtonian term.
 from __future__ import annotations
 
 from .operators import build_integral_operators
-from .physics import Body, RelaxationResult, VolterraSystem
+from .physics import (
+    Body,
+    PiecewiseVolterraStream,
+    RelaxationResult,
+    VolterraSystem,
+    WindowResult,
+)
 from .presets import PRESET_NAMES, PRESETS, PresetConfig, get_preset
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "Body",
     "VolterraSystem",
     "RelaxationResult",
+    "PiecewiseVolterraStream",
+    "WindowResult",
     "build_integral_operators",
     "PresetConfig",
     "PRESETS",

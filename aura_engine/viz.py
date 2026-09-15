@@ -234,3 +234,140 @@ class TrajectoryScene:
             return self._apply(("relax", frame))
         g = ((frame - self.plan.n_relax) * self.stride) % self.plan.n_traj
         return self._apply(("prop", g))
+
+
+class ContinuousScene:
+    """Streaming scene for the infinite Piecewise-Volterra run.
+
+    Windows arrive one at a time; their samples are appended to fixed-length
+    rolling buffers (so RAM stays bounded), and the view gently follows the
+    system. The moving view means the cached blit background is invalid every
+    tick, so this scene uses full redraws -- cheap for a handful of poly-lines
+    and macOS-safe when driven from a Tk ``after`` loop.
+    """
+
+    def __init__(self, fig, ax, maxlen: int = 2600, tail: int = 280):
+        self.fig = fig
+        self.ax = ax
+        self.maxlen = maxlen
+        self.tail = tail
+        self.last = None
+        self.config = None
+
+    def build(self, config) -> None:
+        ax = self.ax
+        self.config = config
+        self.lu = config.length_unit
+        self.N = len(config.bodies)
+        self.bufx = [np.empty(0) for _ in range(self.N)]
+        self.bufy = [np.empty(0) for _ in range(self.N)]
+        self._init_view = False
+        self.last = None
+
+        ax.clear()
+        ax.set_facecolor(BG)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_color(GRID)
+
+        # star field pinned to the axes (fraction coords) so it never scrolls
+        rng = np.random.default_rng(11)
+        n = 240
+        ax.scatter(rng.uniform(0, 1, n), rng.uniform(0, 1, n),
+                   s=rng.uniform(0.2, 2.4, n) ** 2, c="white",
+                   alpha=rng.uniform(0.12, 0.8, n), linewidths=0,
+                   transform=ax.transAxes, zorder=0)
+
+        self.faint, self.tailln, self.glow, self.head = [], [], [], []
+        for body in config.bodies:
+            col = body.color
+            (f,) = ax.plot([], [], color=col, lw=1.0, alpha=0.18, zorder=1)
+            (tl,) = ax.plot([], [], color=col, lw=1.9, alpha=0.95, zorder=3,
+                            solid_capstyle="round")
+            (gl,) = ax.plot([], [], marker="o", ms=body.radius * 1.9, mfc=col,
+                            mec="none", alpha=0.20, zorder=4, ls="none")
+            (hd,) = ax.plot([], [], marker="o", ms=body.radius, mfc=col,
+                            mec="white", mew=0.4, zorder=5, ls="none")
+            self.faint.append(f)
+            self.tailln.append(tl)
+            self.glow.append(gl)
+            self.head.append(hd)
+
+        self.status = ax.text(
+            0.015, 0.955, "", transform=ax.transAxes, color=ACCENT, fontsize=10,
+            family="monospace", va="top",
+            bbox=dict(boxstyle="round,pad=0.4", fc=PANEL, ec=GRID, alpha=0.78),
+        )
+        self._half = float(config.view_radius or 1.0)
+        self._cx = self._cy = 0.0
+        ax.set_xlim(-self._half, self._half)
+        ax.set_ylim(-self._half, self._half)
+        ax.set_aspect("equal")
+
+    def reset(self) -> None:
+        for i in range(self.N):
+            self.bufx[i] = np.empty(0)
+            self.bufy[i] = np.empty(0)
+        self._init_view = False
+        self.last = None
+
+    def push(self, win) -> None:
+        """Append one window's samples (physical units) to the rolling buffers."""
+        R = win.trajectory / self.lu
+        for i in range(self.N):
+            self.bufx[i] = np.concatenate([self.bufx[i], R[:, i, 0]])[-self.maxlen:]
+            self.bufy[i] = np.concatenate([self.bufy[i], R[:, i, 1]])[-self.maxlen:]
+        self.last = win
+
+    def _status_text(self) -> str:
+        cfg, w = self.config, self.last
+        flags = []
+        if cfg.use_retardation:
+            flags.append("RETARDED-c")
+        if cfg.use_pn:
+            flags.append("1PN")
+        model = " ".join(flags) if flags else "NEWTONIAN"
+        t_disp = w.t[-1] / cfg.time_unit
+        buf_disp = w.buffer_span / cfg.time_unit
+        return (
+            f"PROJECT AURA — CONTINUOUS  ∞\n"
+            f"window  : {w.index:>6d}\n"
+            f"sim t   : {t_disp:>10.2f} {cfg.time_label}\n"
+            f"buffer  : {buf_disp:.3g} {cfg.time_label}  (sliding)\n"
+            f"model   : {model}\n"
+            f"drift/W : {w.energy_drift:.2e}"
+        )
+
+    def redraw(self) -> None:
+        if self.last is None:
+            return
+        heads = []
+        for i in range(self.N):
+            x, y = self.bufx[i], self.bufy[i]
+            self.faint[i].set_data(x, y)
+            self.tailln[i].set_data(x[-self.tail:], y[-self.tail:])
+            if x.size:
+                self.head[i].set_data([x[-1]], [y[-1]])
+                self.glow[i].set_data([x[-1]], [y[-1]])
+                heads.append((x[-1], y[-1]))
+
+        # follow the system: ease centre/zoom toward the bound cluster
+        if heads:
+            allx = np.concatenate(self.bufx)
+            ally = np.concatenate(self.bufy)
+            tcx, tcy = float(np.mean([h[0] for h in heads])), float(np.mean([h[1] for h in heads]))
+            rad = np.hypot(allx - tcx, ally - tcy)
+            thalf = max(float(np.percentile(rad, 96)) * 1.18, 1e-9)
+            if not self._init_view:
+                self._cx, self._cy, self._half = tcx, tcy, thalf
+                self._init_view = True
+            else:
+                a = 0.10
+                self._cx += a * (tcx - self._cx)
+                self._cy += a * (tcy - self._cy)
+                self._half += a * (thalf - self._half)
+            self.ax.set_xlim(self._cx - self._half, self._cx + self._half)
+            self.ax.set_ylim(self._cy - self._half, self._cy + self._half)
+
+        self.status.set_text(self._status_text())

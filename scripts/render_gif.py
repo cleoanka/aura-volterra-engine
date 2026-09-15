@@ -19,8 +19,8 @@ from matplotlib.animation import FuncAnimation, PillowWriter
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from aura_engine import presets                     # noqa: E402
-from aura_engine.viz import BG, TrajectoryScene     # noqa: E402
+from aura_engine import PiecewiseVolterraStream, presets            # noqa: E402
+from aura_engine.viz import BG, ContinuousScene, TrajectoryScene    # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 SLUGS = {
@@ -57,11 +57,45 @@ def render(name: str, out: Path, fps: int = 30, seed: int | None = 3) -> None:
     print(f"[{name}] done: {out} ({out.stat().st_size//1024} KB)", flush=True)
 
 
+def render_continuous(name: str, out: Path, n_frames: int = 220,
+                      windows_per_frame: int = 1, fps: int = 25,
+                      seed: int | None = 3) -> None:
+    """Render a finite clip of the infinite Piecewise-Volterra stream."""
+    cfg = presets.sandbox(seed=seed) if name == "Custom Sandbox" else presets.get_preset(name)
+    stream = PiecewiseVolterraStream.from_config(
+        cfg, iterations=cfg.iterations, relaxation=cfg.relaxation,
+        use_retardation=True, use_pn=False)
+    print(f"[{name}] streaming {n_frames} frames (continuous)...", flush=True)
+
+    fig = plt.figure(figsize=(6.0, 6.0), dpi=84, facecolor=BG)
+    ax = fig.add_axes([0.0, 0.0, 1.0, 1.0])
+    scene = ContinuousScene(fig, ax)
+    scene.build(cfg)
+
+    def update(_frame):
+        for _ in range(windows_per_frame):
+            scene.push(stream.step())
+        scene.redraw()
+        return []
+
+    anim = FuncAnimation(fig, update, frames=n_frames, blit=False, interval=1000 // fps)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    anim.save(str(out), writer=PillowWriter(fps=fps))
+    plt.close(fig)
+    print(f"[{name}] done: {out} ({out.stat().st_size//1024} KB)", flush=True)
+
+
 def main() -> None:
     args = sys.argv[1:]
+    if args and args[0] == "continuous":
+        name = args[1] if len(args) > 1 else "Deep Chaos (3-Body)"
+        out = Path(args[2]) if len(args) > 2 else ROOT / "assets" / "continuous.gif"
+        render_continuous(name, out)
+        return
     if not args or args[0] == "all":
         for name, slug in SLUGS.items():
             render(name, ROOT / "assets" / f"{slug}.gif")
+        render_continuous("Deep Chaos (3-Body)", ROOT / "assets" / "continuous.gif")
         return
     name = args[0]
     out = Path(args[1]) if len(args) > 1 else ROOT / "assets" / f"{SLUGS.get(name, 'out')}.gif"

@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from aura_engine import presets
 from aura_engine.operators import apply_operator, build_integral_operators
-from aura_engine.physics import Body, VolterraSystem
+from aura_engine.physics import Body, PiecewiseVolterraStream, VolterraSystem
 
 
 # --------------------------------------------------------------------------- #
@@ -182,6 +182,76 @@ def test_pn_causes_prograde_precession():
     # 1PN: perihelion advances prograde (positive angle, same sense as motion).
     advance = np.arctan2(np.sin(ang_on), np.cos(ang_on))
     assert advance > 0.05, f"expected prograde advance, got {advance:.3f} rad"
+
+
+# --------------------------------------------------------------------------- #
+# Piecewise Volterra streaming: continuity, bounded memory, physical fidelity.
+# --------------------------------------------------------------------------- #
+def test_stream_windows_are_continuous_and_finite():
+    cfg = presets.chaos()
+    stream = PiecewiseVolterraStream.from_config(
+        cfg, iterations=cfg.iterations, relaxation=cfg.relaxation,
+        use_retardation=True, use_pn=False, window_samples=48)
+    prev_end = None
+    for _ in range(8):
+        win = stream.step()
+        assert np.isfinite(win.trajectory).all()
+        if prev_end is not None:
+            # C0 continuity: this window starts where the last one ended
+            gap = np.linalg.norm(win.trajectory[0] - prev_end)
+            assert gap < 1e-9, f"discontinuity at window join: {gap:.2e}"
+        prev_end = win.trajectory[-1]
+
+
+def test_stream_memory_is_bounded():
+    cfg = presets.chaos()
+    stream = PiecewiseVolterraStream.from_config(
+        cfg, iterations=cfg.iterations, relaxation=cfg.relaxation,
+        use_retardation=True, use_pn=False, window_samples=48)
+    sizes = []
+    for _ in range(30):
+        stream.step()
+        sizes.append(stream.buf_R.nbytes)
+    # the delay buffer never grows without bound (O(1) memory)
+    assert max(sizes) <= stream.max_buffer_samples * stream.N * 3 * 8
+    assert max(sizes) - min(sizes) <= stream.max_buffer_samples * stream.N * 3 * 8
+
+
+def test_stream_matches_batch_for_stable_orbit():
+    # A near-circular two-body orbit: streaming with the sliding buffer must
+    # track the batch global solve closely over the same horizon.
+    G, M = 1.0, 1.0
+    r, v = 1.0, 1.0
+    central = Body("M", M, [0, 0, 0], [0, 0, 0])
+    orbiter = Body("m", 1e-6, [r, 0, 0], [0, v, 0])
+    period = 2 * np.pi
+    batch = VolterraSystem([central, orbiter], G=G, c=1e6, softening=1e-4,
+                           t_span=period, n_samples=600, use_retardation=True,
+                           relaxation=0.6).relax(80, record_history=False, tol=1e-11)
+
+    stream = PiecewiseVolterraStream(
+        [central, orbiter], G=G, c=1e6, softening=1e-4, use_retardation=True,
+        use_pn=False, relaxation=0.6, window_span=period / 10.0,
+        window_samples=61, iterations=60)
+    xs, ys = [], []
+    for _ in range(10):
+        w = stream.step()
+        xs.append(w.trajectory[:, 1, 0]); ys.append(w.trajectory[:, 1, 1])
+    stream_end = np.array([xs[-1][-1], ys[-1][-1]])
+    batch_end = batch.trajectory[-1, 1, :2]
+    assert np.linalg.norm(stream_end - batch_end) < 5e-3
+
+
+def test_stream_reset_rewinds():
+    cfg = presets.solar_system()
+    stream = PiecewiseVolterraStream.from_config(
+        cfg, iterations=cfg.iterations, relaxation=cfg.relaxation,
+        use_retardation=True, use_pn=False)
+    for _ in range(5):
+        stream.step()
+    assert stream.window_index == 5 and stream.t_epoch > 0
+    stream.reset()
+    assert stream.window_index == 0 and stream.t_epoch == 0.0
 
 
 # --------------------------------------------------------------------------- #
