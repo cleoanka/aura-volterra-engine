@@ -1,0 +1,8 @@
+# Project AURA -- Volterra N-Body Engine
+# Tested on Python 3.11-3.13, Apple silicon (M-series) macOS.
+
+numpy>=1.26,<3.0
+scipy>=1.11
+matplotlib>=3.8
+customtkinter>=5.2.0     # sleek dark-mode Tk UI (needs the system Tcl/Tk)
+pillow>=10.0             # GIF export for scripts/render_gif.py
