@@ -23,6 +23,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .operators import resample_uniform
+
 # --- AURA palette ---------------------------------------------------------- #
 BG = "#05070f"
 PANEL = "#0b0f1a"
@@ -89,9 +91,12 @@ class TrajectoryScene:
         self.result = result
         self.config = config
 
-        traj = result.trajectory / lu                      # (n, N, 3)
-        self.traj = traj
-        self.history = [h / lu for h in result.history]    # possibly []
+        # CGL (spectral) nodes are non-uniform in time -> resample the final path
+        # onto a uniform grid so propagation playback runs at a steady pace.
+        n_disp = max(400, result.trajectory.shape[0])
+        self.t_disp, traj = resample_uniform(result.t, result.trajectory / lu, n_disp)
+        self.traj = traj                                   # (n_disp, N, 3) uniform
+        self.history = [h / lu for h in result.history]    # node curves (morph only)
         self.N = traj.shape[1]
 
         half, center = auto_limits(traj, config.view_radius)
@@ -163,18 +168,19 @@ class TrajectoryScene:
     # ------------------------------------------------------------------ #
     def _status_text(self, phase_label: str) -> str:
         cfg, res = self.config, self.result
-        flags = []
+        core = "SPECTRAL·MCPI" if getattr(cfg, "scheme", "") == "chebyshev" else "TRAPEZOID"
+        model = []
+        if getattr(cfg, "pn", None) == "eih" or cfg.use_pn:
+            model.append("EIH-1PN")
         if cfg.use_retardation:
-            flags.append("RETARDED-c")
-        if cfg.use_pn:
-            flags.append("1PN")
-        flag_s = " ".join(flags) if flags else "NEWTONIAN"
+            model.append("RETARDED-c")
+        model_s = " ".join(model) if model else "NEWTONIAN"
         return (
             f"PROJECT AURA — VOLTERRA ENGINE\n"
             f"phase   : {phase_label}\n"
-            f"bodies  : {self.N}    windows: {cfg.n_segments}\n"
-            f"model   : {flag_s}\n"
-            f"E-drift : {res.energy_drift:.2e}"
+            f"core    : {core}   windows: {cfg.n_segments}\n"
+            f"model   : {model_s}\n"
+            f"E-drift : {res.energy_drift:.1e}   P-drift: {res.momentum_drift:.1e}"
         )
 
     def _apply(self, state) -> list:
@@ -206,7 +212,7 @@ class TrajectoryScene:
                 self.active[i].set_data(traj[lo:g + 1, i, 0], traj[lo:g + 1, i, 1])
                 self.head[i].set_data([traj[g, i, 0]], [traj[g, i, 1]])
                 self.glow[i].set_data([traj[g, i, 0]], [traj[g, i, 1]])
-            t = self.result.t[g] / self.config.time_unit
+            t = self.t_disp[g] / self.config.time_unit
             self.status.set_text(
                 self._status_text(f"PROPAGATION  t={t:6.2f} {self.config.time_label}")
             )
@@ -313,8 +319,12 @@ class ContinuousScene:
         self.last = None
 
     def push(self, win) -> None:
-        """Append one window's samples (physical units) to the rolling buffers."""
-        R = win.trajectory / self.lu
+        """Append one window's samples (physical units) to the rolling buffers.
+
+        Each spectral window is resampled to a uniform grid so the rolling trail
+        has even point density (CGL nodes cluster at the window ends).
+        """
+        _, R = resample_uniform(win.t, win.trajectory / self.lu, 2 * win.t.size)
         for i in range(self.N):
             self.bufx[i] = np.concatenate([self.bufx[i], R[:, i, 0]])[-self.maxlen:]
             self.bufy[i] = np.concatenate([self.bufy[i], R[:, i, 1]])[-self.maxlen:]
@@ -322,21 +332,22 @@ class ContinuousScene:
 
     def _status_text(self) -> str:
         cfg, w = self.config, self.last
+        core = "SPECTRAL·MCPI" if getattr(cfg, "scheme", "") == "chebyshev" else "TRAPEZOID"
         flags = []
+        if getattr(cfg, "pn", None) == "eih" or cfg.use_pn:
+            flags.append("EIH")
         if cfg.use_retardation:
             flags.append("RETARDED-c")
-        if cfg.use_pn:
-            flags.append("1PN")
         model = " ".join(flags) if flags else "NEWTONIAN"
         t_disp = w.t[-1] / cfg.time_unit
         buf_disp = w.buffer_span / cfg.time_unit
         return (
             f"PROJECT AURA — CONTINUOUS  ∞\n"
-            f"window  : {w.index:>6d}\n"
+            f"window  : {w.index:>6d}   [{core}]\n"
             f"sim t   : {t_disp:>10.2f} {cfg.time_label}\n"
             f"buffer  : {buf_disp:.3g} {cfg.time_label}  (sliding)\n"
             f"model   : {model}\n"
-            f"drift/W : {w.energy_drift:.2e}"
+            f"drift/W : E {w.energy_drift:.1e}  P {w.momentum_drift:.1e}"
         )
 
     def redraw(self) -> None:

@@ -6,14 +6,17 @@
 **A global waveform-relaxation orbital engine — no step-by-step integration.**
 
 Instead of marching one timestep at a time (RK4 / Verlet), AURA solves the
-*entire trajectory at once* by damped Picard iteration of the **Volterra integral
-form** of the equations of motion — with finite‑speed **retarded gravity** and an
-optional **post‑Newtonian** precession term.
+*entire trajectory at once* by Anderson‑accelerated Picard iteration of the
+**Volterra integral form** of the equations of motion — on a **spectral
+Chebyshev (MCPI)** core, with aberration‑corrected **retarded gravity**, full
+**Einstein–Infeld–Hoffmann 1PN** dynamics, and an **infinite‑horizon Continuous
+Mode** that streams forever on `O(1)` memory.
 
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple&logoColor=white)
 ![NumPy](https://img.shields.io/badge/NumPy-vectorized-013243?logo=numpy&logoColor=white)
-![Backend](https://img.shields.io/badge/BLAS-Accelerate-38e8ff)
+![Core](https://img.shields.io/badge/core-spectral%20MCPI-38e8ff)
+![Backend](https://img.shields.io/badge/BLAS-Accelerate-8a2be2)
 ![License](https://img.shields.io/badge/license-MIT-22c55e)
 ![Continuous](https://img.shields.io/badge/mode-%E2%88%9E%20continuous-ffd15d)
 ![Status](https://img.shields.io/badge/status-proof--of--concept-9b5cff)
@@ -88,21 +91,15 @@ where `C` is the cumulative trapezoid operator (`v = v0 + C·a`). `K₂·A` is a
 BLAS `gemm` — on Apple silicon it maps straight onto the **Accelerate** framework,
 so the whole trajectory relaxes in one vectorised matrix product per iteration.
 
-**Damped relaxation.** We under‑relax with factor `w ∈ (0,1]`
-(`R ← (1-w)R + w·Picard(R)`), which widens the convergence radius so a *single
-global window* can span a full orbit. Long / chaotic horizons are handled by
-chaining short global windows — **segmented Picard–Chebyshev (MCPI)**; each window
-is still solved globally.
+**Accelerated relaxation.** The fixed point `R = base + K₂·A(R)` is driven by
+**Anderson acceleration** (a small least‑squares mix of recent residuals) rather
+than plain damping — it converges in far fewer iterations and to a tighter
+tolerance. Damped Picard (`R ← (1-w)R + w·Picard(R)`) remains available. Long /
+chaotic / infinite horizons chain short global windows — **segmented and streaming
+Picard–Chebyshev (MCPI)**; each window is still solved globally.
 
-**Retarded potentials.** Body *i* feels body *j* at the retarded time
-`t_ret = t − |rᵢ(t) − rⱼ(t_ret)| / c`, solved with one fixed‑point refinement of the
-delay and interpolated along the time axis (with ballistic extrapolation into the
-pre‑window past). At the true `c` this is a tiny stable correction; lower `c` to
-make it a visible, physical effect.
-
-**Post‑Newtonian (optional).** A reduced 1PN (Schwarzschild) pairwise term adds
-prograde perihelion precession. It is **off by default** and is a leading‑order
-approximation, not the full Einstein–Infeld–Hoffmann cross terms.
+> The methods below (spectral quadrature, physical retardation, EIH, conservation
+> diagnostics) are the **v0.3 advanced core** — see the dedicated section further down.
 
 ---
 
@@ -203,45 +200,113 @@ flight computer. Flip **Continuous Mode** on and it never stops.
 
 ---
 
+## The Advanced Core (v0.3)
+
+Five upgrades take AURA from a clean PoC to a research‑grade engine. Each is
+**selectable** and **measured** (`tests/test_physics.py`, `scripts/tune.py`).
+
+### 1 · Spectral quadrature (MCPI) — `scheme="chebyshev"`
+
+More Picard iterations **don't** raise accuracy past the discretisation floor —
+the *quadrature* does. Trapezoid is `O(dt²)`; the Chebyshev–Gauss–Lobatto scheme
+(Modified Chebyshev‑Picard Iteration) is **spectral**. On the `sin` double‑integral
+at equal node counts:
+
+$$\text{trapezoid error} \approx 3\times10^{-3} \qquad\longrightarrow\qquad \text{Chebyshev error} \approx 9\times10^{-16}$$
+
+— twelve orders of magnitude, and a far larger convergence radius per window
+(fewer nodes, bigger windows). The spacecraft's eccentric orbit conserves energy to
+`3.9e‑15` (machine precision).
+
+### 2 · Physically‑correct retardation — `retardation="aberration"` (default)
+
+Naive retarded gravity uses the source's retarded *position* only — which breaks
+Newton's third law and produces a spurious secular drift. Real gravity's
+velocity‑dependent terms **cancel the aberration** (Carlip 2000), so AURA
+extrapolates the source forward by the light‑time, $\mathbf r_\text{ret} + \tau\,\mathbf v_\text{ret}$,
+with the light‑cone equation solved by **Newton iteration**. On the chaotic triple:
+
+| retardation | energy drift | angular‑momentum drift |
+|---|---|---|
+| `"naive"` (the textbook strawman) | `0.92` | `0.41` |
+| `"aberration"` (physical, default) | **`8.6e‑3`** | **`2.1e‑3`** |
+
+Two orders of magnitude better conservation — and you can flip to `"naive"` to
+*watch* the artifact appear.
+
+### 3 · Full Einstein–Infeld–Hoffmann 1PN — `pn="eih"`
+
+The complete EIH n‑body 1PN acceleration (harmonic gauge), not a reduced pairwise
+term. It is **momentum‑conserving** (derived from a Lagrangian) and gives the
+correct **prograde** perihelion advance for comparable masses:
+
+| PN model | perihelion advance | momentum drift |
+|---|---|---|
+| `"reduced"` (Schwarzschild pairwise) | prograde ✓ | `8.9e‑2` |
+| `"eih"` (full 1PN) | prograde ✓ | **`5e‑4`** |
+
+### 4 · Anderson‑accelerated Picard — `accelerator="anderson"` (default)
+
+A least‑squares mix of recent residuals replaces hand‑tuned damping. On the inner
+Solar System it converges in **32 iterations vs 54** for damped Picard, *and* to a
+tighter residual.
+
+### 5 · Conservation diagnostics + self‑consistent velocities
+
+Every solve reports **energy, linear‑momentum and angular‑momentum drift**. The
+velocity fed into the force model is the Volterra velocity `V = V₀ + C·A` (not a
+finite difference), and the predictor is the Taylor form `r₀ + v₀t + ½a₀t²` — both
+cut iterations and keep the physics self‑consistent. Interpolation of the retarded
+past is **barycentric‑Lagrange** (spectral) on CGL nodes, **cubic‑Hermite** on the
+delay buffer.
+
+---
+
 ## Is the physics real? (yes — and measured)
 
-This repo does **not** hand‑wave. The claims are checked in `tests/test_physics.py`
-and reproduced by `python scripts/tune.py`:
+This repo does **not** hand‑wave. Every row is checked in `tests/test_physics.py`
+(19 tests) and reproduced by `python scripts/tune.py`:
 
 | Property | Result |
 |---|---|
-| Double‑integral operator on `a=const`, `a=k·t` | exact to `1e‑6` (analytic) |
-| Circular two‑body orbit closes after one period | position error `< 2e‑2` |
-| Energy conservation, circular two‑body | drift `< 1e‑4` |
-| **Newtonian** 3‑body through a deep chaotic encounter | energy drift `≈ 2e‑4` |
-| Same system with **retarded** gravity | energy drift `≈ 0.9` |
-| 1PN term on an eccentric orbit | **prograde** perihelion advance ✓ |
+| Chebyshev vs trapezoid, `sin` double‑integral | `9e‑16` vs `3e‑3` (**spectral**) |
+| Barycentric interpolation of a smooth function | error `< 1e‑10` |
+| Circular two‑body: closes, conserves E / P / L | all drifts `< 1e‑6` |
+| Spacecraft eccentric orbit, energy | drift `3.9e‑15` |
+| **Newtonian** chaotic triple, energy / momentum | `< 1e‑6` / `< 1e‑9` |
+| **Aberration** vs **naive** retardation (chaos) | E `8.6e‑3` vs `0.92`; L `2.1e‑3` vs `0.41` |
+| **EIH** circular orbit | stable, drift `~1e‑6` |
+| **EIH** eccentric orbit | **prograde** precession, momentum drift `< 1e‑2` |
+| Anderson vs damped Picard (solar) | **32 vs 54** iterations |
 | **Continuous stream** window joins | `C⁰` continuity, gap `< 1e‑9` |
-| **Continuous stream** memory over 30+ windows | bounded (delay buffer never grows) |
-| Stream vs. batch on a stable orbit | endpoints agree to `< 5e‑3` |
+| **Continuous stream** memory over 25+ windows | bounded (delay buffer never grows) |
+| **Continuous stream** momentum (aberration) | drift `< 1e‑6` |
 
-The most interesting line is the pair in the middle: with **instantaneous** gravity
-the global integrator conserves energy to ~`10⁻⁴` *even through chaotic close
-encounters*, but switching on **retarded** potentials introduces a drift thousands
-of times larger. That drift is **physical** (finite‑speed gravity is not
-conservative in this toy model), not numerical error — the engine is telling the
-truth about the model it is given.
+The retardation pair is the honest headline: with **instantaneous** gravity the
+spectral integrator conserves energy to machine precision *through chaotic close
+encounters*; the **naive** finite‑`c` model drifts by `~0.9` (a real, well‑known
+artifact); and the **aberration‑corrected** model — the physically defensible one —
+brings that back down by two orders of magnitude. The engine tells the truth about
+whichever model you select.
 
-> ⚠️ **Honesty note.** Naive retarded Newtonian gravity is *not* general relativity —
-> real GR cancels aberration through velocity‑dependent terms. Treat retardation
-> here as an instructive finite‑speed model, and the 1PN term as leading‑order.
+> ⚠️ **Honesty note.** Even the aberration‑corrected retardation is a *linearised*
+> finite‑speed model, not full numerical relativity; the EIH term is 1PN (no 2PN /
+> spin / radiation‑reaction). What is rigorous is that each model conserves exactly
+> what its symmetry says it should, and the diagnostics prove it.
 
 ---
 
 ## Features
 
+- **Spectral MCPI core:** Chebyshev–Gauss–Lobatto quadrature with barycentric interpolation — exponential accuracy, machine‑precision orbits.
+- **Physical retardation + full EIH 1PN:** aberration‑cancelling finite‑`c` gravity and momentum‑conserving post‑Newtonian dynamics, both measured.
+- **Anderson‑accelerated relaxation** and live **energy / momentum / angular‑momentum** conservation diagnostics.
+- **∞ Continuous Mode:** Piecewise Volterra Windowing with a sliding delay buffer — runs *indefinitely* on `O(1)` memory, with adaptive window subdivision.
 - **Four presets:** Inner Solar System · Earth‑Moon‑Spacecraft · Deep Chaos 3‑body · randomised Sandbox.
-- **∞ Continuous Mode:** Piecewise Volterra Windowing with a sliding delay buffer — runs *indefinitely* on `O(1)` memory (see the manifesto above).
-- **Sleek dark cockpit** (`customtkinter`) with an embedded, blitted Matplotlib canvas.
+- **Sleek dark cockpit** (`customtkinter`) with an embedded, blitted Matplotlib canvas and a live physics HUD.
 - **Live controls:** scenario selector, relaxation‑depth slider, damping `w`, retardation & 1PN switches, continuous‑mode switch, playback speed, play/pause/restart, sandbox re‑roll.
-- **Two‑phase animation:** watch the *waveform relaxation*, then *propagate* comet heads along the converged path — or a *following, endless* stream in Continuous Mode.
-- **Non‑blocking:** batch solves and the infinite stream both run on a worker thread + bounded queue (backpressure paces compute to the display); the UI never freezes.
-- **Headless tooling:** GIF renderer (incl. `continuous`), tuning harness, and a `pytest` validation suite (17 tests).
+- **Non‑blocking:** batch solves and the infinite stream both run on a worker thread + bounded queue; the UI never freezes.
+- **Headless tooling:** GIF renderer (incl. `continuous`), tuning harness, and a `pytest` validation suite (19 tests).
 
 ---
 
@@ -291,8 +356,8 @@ delay‑buffer length, and it runs until you toggle it off.
 aura-volterra-engine/
 ├── main.py                     # customtkinter cockpit (entry point)
 ├── aura_engine/
-│   ├── operators.py            # Volterra integral operators (C, K₂ = C·C)
-│   ├── physics.py              # Body, VolterraSystem (batch) + PiecewiseVolterraStream (∞)
+│   ├── operators.py            # trapezoid + spectral Chebyshev (MCPI) operators, barycentric interp
+│   ├── physics.py              # engine core, EIH, retardation models, Anderson, VolterraSystem + stream
 │   ├── presets.py              # the four scenarios + engine settings
 │   └── viz.py                  # shared scenes: TrajectoryScene (batch) + ContinuousScene (∞)
 ├── scripts/
@@ -308,15 +373,18 @@ aura-volterra-engine/
 ## How a single iteration works (under the hood)
 
 ```python
-from aura_engine import get_preset
+from aura_engine import get_preset, VolterraSystem
 
 cfg    = get_preset("Solar System (Inner)")
-system = cfg.build()                              # VolterraSystem over a time grid
-result = system.propagate(iterations=60,          # damped Picard sweeps / window
-                          n_segments=cfg.n_segments)
+system = cfg.build(scheme="chebyshev",            # spectral MCPI (default)
+                   accelerator="anderson",        # Anderson-accelerated Picard
+                   retardation="aberration",      # physical finite-c gravity
+                   pn="none")                      # or "eih" for full 1PN
+result = system.propagate(iterations=60, n_segments=cfg.n_segments)
 
-print(result.converged, result.energy_drift)      # True  2.2e-07
-traj = result.trajectory                          # (n_samples, n_bodies, 3)
+print(result.converged, result.energy_drift,      # True  5.0e-10
+      result.momentum_drift, result.angmom_drift) # conservation diagnostics
+traj = result.trajectory                          # (n_nodes, n_bodies, 3)
 ```
 
 Inside `relax()` each sweep is literally:
@@ -347,17 +415,15 @@ for window in stream:                 # never terminates; RAM stays O(1)
 
 ## Limitations & future work
 
-- **Convergence radius.** A single global window converges up to ~one orbit; longer
-  and infinite horizons use segmented / **Continuous‑Mode** windows. Chebyshev nodes
-  + Clenshaw–Curtis quadrature (true MCPI) would extend each window dramatically over
-  the current uniform‑grid trapezoid.
 - **Delay‑buffer assumption.** Continuous Mode assumes the longest light delay is
   shorter than one window (`Δ_buf ≤ W`); true for all presets. Delays longer than the
   retained buffer are clamped to its oldest sample.
-- **Retardation is a toy.** See the honesty note above — no aberration cancellation.
-- **1PN is reduced.** Full EIH cross terms and spin are not modelled.
-- **Softening.** A Plummer softening length regularises close encounters; it is a
-  small, explicit, per‑preset parameter, not physical.
+- **Retardation is linearised.** The aberration‑corrected model is `O(v/c)` correct,
+  not full numerical relativity; the EIH term is 1PN (no 2PN / spin / radiation).
+- **Softening vs. regularisation.** A Plummer softening length regularises close
+  encounters; Kustaanheimo–Stiefel / Sundman regularisation (true collision handling)
+  is future work, as is a Barnes–Hut / FMM tree for large‑`N` (both deliberately
+  deferred — they trade the clean spectral‑matrix engine for scaling, not accuracy).
 
 ---
 

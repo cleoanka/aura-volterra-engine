@@ -319,6 +319,8 @@ class AuraApp(ctk.CTk):
                 cfg.use_retardation = retard
                 cfg.use_pn = pn
                 cfg.relaxation = relax
+                cfg.retardation = "aberration" if retard else "none"
+                cfg.pn = "eih" if pn else "none"
                 record = cfg.n_segments == 1
                 res = system.propagate(iters, n_segments=cfg.n_segments,
                                        record_history=record)
@@ -409,6 +411,8 @@ class AuraApp(ctk.CTk):
         cfg = (presets.sandbox(seed=seed) if name == "Custom Sandbox"
                else presets.get_preset(name))
         cfg.use_retardation, cfg.use_pn, cfg.relaxation = retard, pn, relax
+        cfg.retardation = "aberration" if retard else "none"
+        cfg.pn = "eih" if pn else "none"
         try:
             stream = PiecewiseVolterraStream.from_config(
                 cfg, iterations=iters, relaxation=relax,

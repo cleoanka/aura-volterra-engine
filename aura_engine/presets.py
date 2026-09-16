@@ -57,6 +57,10 @@ class PresetConfig:
     relaxation: float
     iterations: int
     n_segments: int = 1               # chained global windows (MCPI-style)
+    scheme: str = "chebyshev"         # "chebyshev" (spectral) | "trapezoid"
+    retardation: str | None = None    # None -> auto from use_retardation
+    pn: str | None = None             # None -> auto from use_pn ("eih")
+    window_samples: int = 48          # CGL nodes per streaming window
     length_unit: float = 1.0          # divide positions by this for display
     unit_label: str = "m"
     view_radius: Optional[float] = None  # half-width of the square plot, in units
@@ -74,6 +78,9 @@ class PresetConfig:
             use_retardation=self.use_retardation,
             use_pn=self.use_pn,
             relaxation=self.relaxation,
+            scheme=self.scheme,
+            retardation=self.retardation,
+            pn=self.pn,
         )
         params.update(overrides)
         return VolterraSystem(self.bodies, **params)
@@ -115,7 +122,7 @@ def solar_system() -> PresetConfig:
         c=C_SI,
         softening=0.02 * AU,
         t_span=0.72 * YEAR,
-        n_samples=700,
+        n_samples=220,
         use_retardation=True,
         use_pn=False,
         relaxation=0.55,
@@ -168,7 +175,7 @@ def spacecraft() -> PresetConfig:
         c=C_SI,
         softening=0.25 * R_EARTH,
         t_span=1.25 * period,          # ~1.25 spacecraft orbits
-        n_samples=900,
+        n_samples=300,
         use_retardation=True,
         use_pn=False,
         relaxation=0.55,
@@ -224,7 +231,7 @@ def chaos() -> PresetConfig:
         c=18.0,               # lowered 'c' -> visible retardation (artistic)
         softening=0.12,
         t_span=14.0,
-        n_samples=1200,
+        n_samples=520,
         use_retardation=True,
         use_pn=False,
         relaxation=0.5,
@@ -293,7 +300,7 @@ def sandbox(n_bodies: int = 5, seed: Optional[int] = None) -> PresetConfig:
         c=25.0,
         softening=0.18,
         t_span=7.0,
-        n_samples=820,
+        n_samples=360,
         use_retardation=True,
         use_pn=False,
         relaxation=0.5,
