@@ -534,7 +534,13 @@ the radiation-reaction order — it is real classical electrodynamics, not a toy
      **Open:** ε = 1e-3…1e-5 is not yet at round-off. Against the 128-bit reference M = 16
      is at 1e-15 but M = 32/48 at 1e-11…2e-9; the deviation starts in the first full window
      after the second sliver; it is not the one-sided-lookup tolerance (varying it does
-     not help, shrinking it breaks M = 16). Root cause not found.
+     not help, shrinking it breaks M = 16). Also rejected: too many nodes on sliver windows
+(capping sliver windows at 4 or 8 nodes changes nothing). Window boundaries agree between
+M = 16 and M = 32 to 1e-12, and the first deviating window is a normal-length one
+([B₂, A₃] ≈ [0.24902, 0.37355], ε = 1e-5), so some M-dependent ingredient inside a
+regular window is wrong. Unverified candidates: an unaligned jump that `_known_origin`
+wrongly treats as already registered, or the lagged-iterate neutral term `_A_cur`.
+Root cause not found.
    - *Error control halved before break alignment* (kink inflated the tail → needless
      halvings, slivers). Now alignment first, control second.
    - *`_trunc_err` not Galilean-invariant* (scaled by max|V| incl. the centre-of-mass
