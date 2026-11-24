@@ -350,3 +350,22 @@ def test_vectorized_retarded_field_matches_pair_loop(model):
             s.step()
         outs.append(s.R_epoch.copy())
     assert np.abs(outs[0] - outs[1]).max() < 1e-13
+
+
+def test_warm_start_same_answer_fewer_iterations():
+    T = 2 * (2 * np.pi / np.sqrt(2.0))
+    res = {}
+    for warm in (False, True):
+        s = PiecewiseVolterraStream(
+            _binary_bodies(), G=1.0, c=8.0, softening=0.0, use_retardation=True,
+            use_pn=False, relaxation=1.0, window_span=T / 8, window_samples=32,
+            iterations=200, accelerator="picard", retardation="naive", pn="none",
+            tol=1e-13, adaptive=False, track_breaks=2)
+        s.warm_start = warm
+        it = 0
+        while s.t_epoch < T - 1e-12:
+            s.window_span = min(T / 8, T - s.t_epoch)
+            it += s.step().iterations
+        res[warm] = (s.R_epoch.copy(), it)
+    assert np.abs(res[True][0] - res[False][0]).max() < 1e-12
+    assert res[True][1] < res[False][1]

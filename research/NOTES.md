@@ -158,10 +158,16 @@ predicts. Not a proof: next step is the linearised error operator in the co-rota
 frame (symbol `(J_s + J_c R(Ωτ) e^{−sτ})/s²`).
 
 
+**Discrete operator (checked).** On `[−1, 1]` (length 2) the CGL double-integration
+matrix `K2 = B·B` satisfies `‖K2⁸‖_∞ = 3.13e-9` for M = 16…128 — identical to the
+continuous Volterra bound `2^16/16! = 3.14e-9` (M = 8: 3.42e-9). So the discrete Picard
+iteration inherits the factorial bound. `ρ(K2)` is not exactly 0 (3.7e-2 at M = 8,
+1.1e-2 at 16, ≈2.7e-3 for M ≥ 32 — eigenvalues of this highly non-normal, nearly
+nilpotent matrix are ill-conditioned, so the floor is probably round-off); it would
+only matter once `(LW²)^n/(2n)!` falls below `ρ^n`, i.e. far below tol.
+
 TODO: make the `X_M` invariance + the aberration model (depends on `v_j(t−τ)`, needs a
-bound on `x''`) rigorous; check the constant in `κ(β)`; discrete (CGL) version: the
-discrete operator `K2 = C·C` is strictly lower-triangular-like? (No — CGL `B` is dense
-with a nilpotent-like spectrum; check `ρ(K2)` numerically, should be ≈0.)
+bound on `x''`) rigorous; check the constant in `κ(β)`.
 
 ## 4. Results so far
 
@@ -250,15 +256,18 @@ Julia → **implementation-dependent**. Cheapest configuration reaching each err
 
 | case | err ≤ | WR-Chebyshev (L2/L3) rhs / ms | best DelayDiffEq rhs / ms |
 |---|---|---|---|
-| binary naive | 1e-9 | 828 / 39 | 1162 (Vern7) / 77 |
-| binary naive | 1e-13 | 1536 / 61 | 2232 (Vern7) / 78 |
-| binary aberration | 1e-9 | 1500 / 65 | 2212 (Vern7) / 91 |
-| binary aberration | 1e-13 | 4096 / 92 | not reached |
-| triple naive | 1e-6 | 732 / 139 | 462 (Vern7) / 77 |
-| triple naive | 1e-11 | 996 / 169 | 1842 (Vern9) / 129 |
-| triple naive | 1e-13 | 1464 / 185 | not reached |
+| binary naive | 1e-9 | 576 / 32 | 1162 (Vern7) / 77 |
+| binary naive | 1e-13 | 1752 / 51 | 2232 (Vern7) / 78 |
+| binary aberration | 1e-9 | 1500 / 68 | 2212 (Vern7) / 91 |
+| binary aberration | 1e-13 | 3584 / 91 | not reached |
+| triple naive | 1e-6 | 624 / 81 | 462 (Vern7) / 77 |
+| triple naive | 1e-11 | 852 / 94 | 1842 (Vern9) / 129 |
+| triple naive | 1e-13 | 1008 / 106 | not reached |
 
-Best attainable error — WR: 3.8e-15 / 2.6e-14 / 2.8e-15; DelayDiffEq (any alg/tol):
+(Re-run 2026-11-24 after vectorised field + warm start; earlier run: triple 1e-13 at
+1464 rhs / 185 ms.)
+
+Best attainable error — WR: 6.0e-15 / 2.6e-14 / 1.9e-15; DelayDiffEq (any alg/tol):
 3.2e-14 / 5.6e-13 / 1.9e-13. **With `dependent_lags` tracking on (E3b)** DelayDiffEq's
 best becomes 1.0e-13 / 3.2e-13 / 9.1e-14 — still 1–2 orders short. Structural reason:
 its tracking API takes a lag `τ(u, p, t)` of the *current* state; the light-cone lag is
@@ -267,9 +276,11 @@ misplaces breaking points by O(β τ). WR locates them on the converged iterate 
 Without tracking DelayDiffEq is non-monotone in tol (binary naive Vern9: tol 1e-8 →
 1.2e-8, tol 1e-10 → 1.6e-8).
 
-**Honest reading:** cost is *comparable* (same order of RHS evaluations; cheaper for
-the binary, dearer for the triple at loose tolerance). The clear wins are **attainable
-accuracy** (machine precision) and **robustness** (monotone in M). Do not claim speed.
+**Honest reading:** cost is *comparable to better* in RHS count (fewer evaluations at
+every threshold ≤ 1e-9; dearer for the triple only at 1e-6), and warm wall time is now
+lower too — but that last part is Python+NumPy vs Julia on tiny N, so do not lead with
+speed. The clear wins are **attainable accuracy** (machine precision) and
+**robustness** (monotone in M).
 
 ### E8 — breaking-point order rule, measured (`exp_e8_break_order.py`)
 Single window [0, 0.2] containing exactly one breaking point (ξ₁ ≈ τ = 0.1245, binary
@@ -316,15 +327,15 @@ tol 1e-12 → err 1e-8; vel-based tol 1e-12 → err 3e-12).
 
 | N | DDE tol 1e-10: err / nf / wall | WR-B (C² φ + acc 1e-10): err / rhs / wall | WR-C (+L1): err / rhs / windows / wall |
 |---|---|---|---|
-| 3 | 2.3e-11 / 3250 / 0.27 s | 8.9e-11 / 5024 / 0.45 s | 4.0e-13 / 5632 / 37 / 0.53 s |
-| 4 | 1.7e-11 / 1602 / 0.27 s | 3.3e-11 / 2240 / 0.25 s | 1.2e-13 / 4432 / 27 / 0.65 s |
-| 6 | 8.6e-11 / 738 / 0.25 s | 1.4e-10 / 768 / 0.09 s | 1.8e-14 / 4848 / 35 / 1.5 s |
-| 8 | 3.7e-11 / 3074 / 1.17 s | 6.1e-11 / 4016 / 1.13 s | 1.0e-13 / 12720 / 80 / 7.7 s |
-| 12 | 1.8e-09 / 2130 / 2.09 s | 6.8e-11 / 2800 / 1.15 s | 1.6e-13 / 25744 / 141 / 49 s |
-| 16 | 1.3e-09 / 2786 / 5.03 s | 3.6e-10 / 2848 / 1.80 s | 6.9e-13 / 41904 / 249 / 192 s |
+| 3 | 2.3e-11 / 3250 / 0.27 s | 8.9e-11 / 4496 / 0.41 s | 4.0e-13 / 5008 / 37 / 0.65 s |
+| 4 | 1.7e-11 / 1602 / 0.27 s | 3.3e-11 / 2048 / 0.36 s | 1.2e-13 / 3936 / 27 / 0.73 s |
+| 6 | 8.6e-11 / 738 / 0.25 s | 1.4e-10 / 720 / 0.09 s | 1.9e-14 / 3952 / 35 / 1.6 s |
+| 8 | 3.7e-11 / 3074 / 1.17 s | 6.1e-11 / 3744 / 1.27 s | 9.9e-14 / 11152 / 80 / 8.5 s |
+| 12 | 1.8e-09 / 2130 / 2.09 s | 6.8e-11 / 2608 / 1.72 s | 1.7e-13 / 22384 / 141 / 60 s |
+| 16 | 1.3e-09 / 2786 / 5.03 s | 3.6e-10 / 2608 / 2.23 s | 6.9e-13 / 36912 / 249 / 205 s |
 
 **Finding 2 — modes.** WR-B tracks its tolerance at every N with RHS cost 1.0–1.5× of
-DelayDiffEq, and is *faster in wall time from N ≈ 12* (all-pairs field vectorised over
+DelayDiffEq, and is *faster in wall time from N ≈ 12* (N = 16: 2.2 s vs 5.0 s) (all-pairs field vectorised over
 nodes × pairs; per-call cost amortises). WR-C (break tracking) buys ~1e-13 but the
 number of level-1 breaks is N(N−1) → windows ∝ N² → unusable beyond N ≈ 6. Practical
 recommendation: **C² initial history + error control** (B) in general; **tracking (C)**
@@ -354,7 +365,7 @@ hence `dL/dt = d·m·a_t`. Engine slope of total L on `[2τ, 2τ+0.2]` (L2 track
 The difference → 0 as ~β^1.3: the formula assumes a *stationary* circle while the real
 orbit spirals out at a rate ∝ β. Sanity check only (not a precision benchmark);
 also seen at t0: the consistent `A0` tangential component 0.0884 vs `Ωτ/2` = 0.0884.
-(Inline script; promote to `research/exp_e6_laplace.py` if it goes in the paper.)
+Script: `research/exp_e6_laplace.py` (`results/e6_laplace.json`).
 
 ## 5. Bugs found and fixed on this branch (engine)
 
@@ -376,7 +387,15 @@ also seen at t0: the consistent `A0` tangential component 0.0884 vs `Ωτ/2` = 0
    ~7e-7 sliver window and the 1e-9 dedup tolerance let it register twice, doubling
    the chain. Now roots within `1e-4·W` of a registered break are the same break.
    Test: `test_break_not_duplicated_into_sliver_window`. E3/E5 re-run after the fix.
-5. New: breaking-point tracking (`PiecewiseVolterraStream(track_breaks=L)`) and C²
+5. **Misleading clamp counter:** pruned-history lookups were counted during Picard
+   iterations too (wandering iterates), so a warning/counter fired although the
+   converged solution never left the retained past (cluster N=8: 67 → 0). Now counted
+   only on the final evaluation at the fixed point.
+6. New: warm-start predictor (4th-order Taylor from the previous window's Chebyshev
+   polynomial): ~10 % fewer iterations (81→73 binary, 90→82 triple), same answer
+   (`test_warm_start_same_answer_fewer_iterations`). Truncated re-solves now fall back
+   to halving if they do not converge.
+7. New: breaking-point tracking (`PiecewiseVolterraStream(track_breaks=L)`) and C²
    initial history (`initial_A0=`). Tests:
    `test_breaking_point_alignment_restores_spectral_convergence`,
    `test_breaks_are_registered_and_bounded`.
@@ -408,7 +427,7 @@ Findings that contradict the v0.3.0 README (fix README before any public claim):
       clamps to the oldest node (2e-4 error with `buffer_safety=1.0`; 0 clamps at the
       default 2.5) — interpolate/extrapolate instead, or raise.
 - [x] Scaling with N: vectorised (E7). GPU/Colab only if the paper wants N ≥ 100.
-- [ ] Long-time runs (many orbits): aberration-model conservation; E6 promoted to a script.
+- [ ] Long-time runs (many orbits): aberration-model conservation.
 - [ ] Verify every (?) citation in §1; read Hale 2024 and the 2023 constant-delay
       Chebyshev–Picard paper in full and state the delta precisely.
 - [ ] RADAR5 / ddesd comparison (optional; DelayDiffEq is the strongest open baseline).
@@ -421,8 +440,10 @@ Findings that contradict the v0.3.0 README (fix README before any public claim):
 ```bash
 cd ~/aura-volterra-engine
 # Julia env (once): ~/.julia-envs/dde with DelayDiffEq, OrdinaryDiffEq, JSON3
-.venv/bin/python -m pytest -q                          # 27 tests
+.venv/bin/python -m pytest -q                          # 28 tests
 .venv/bin/python research/exp_e7_scaling.py 3 4 6 8 12 16  # ~6 min (N=16 WR-C dominates)
+.venv/bin/python research/exp_e6_laplace.py            # ~10 s
+.venv/bin/python research/exp_e8_break_order.py        # ~30 s
 .venv/bin/python research/exp_e2_convergence_theory.py # ~3 s
 .venv/bin/python research/exp_e2b_limits.py            # ~7 s
 .venv/bin/python research/exp_e5_breaks.py             # ~1 min (+ Julia refs, cached)

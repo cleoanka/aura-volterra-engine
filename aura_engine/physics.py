@@ -50,6 +50,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
+import numpy.polynomial.chebyshev as _cheb
 
 from .operators import (
     apply_operator,
@@ -479,9 +480,18 @@ class _EngineCore:
                 converged = True
                 break
 
+        self._count_clamps(True)                           # judge only the fixed point
         A = self.accelerations(R, V)                       # clean final velocity
+        self._count_clamps(False)
         V = v0 + apply_operator(self.C, A)
         return R, V, history, residuals, converged, used
+
+    def _count_clamps(self, on):
+        """Pruned-history lookups are counted (and warned about) only on the
+        converged solution: intermediate Picard iterates may wander far."""
+        h = getattr(self, "history", None)
+        if h is not None and hasattr(h, "count_clamps"):
+            h.count_clamps = on
 
 
 # --------------------------------------------------------------------------- #
@@ -643,6 +653,7 @@ class PiecewiseVolterraStream(_EngineCore):
         # the position scale). None = off (previous behaviour).
         self.accuracy_tol = accuracy_tol
         self.accuracy_halvings = 0
+        self.warm_start = True
         self.reset()
 
     # -- operators for the current span (rebuilt when the span adapts) ------- #
@@ -665,6 +676,7 @@ class PiecewiseVolterraStream(_EngineCore):
         self.break_splits = 0
         self._tau_cache = {}
         self._span_hint = None
+        self._prev_end_derivs = None
 
     @classmethod
     def from_config(cls, cfg, iterations, relaxation, use_retardation, use_pn,
@@ -763,9 +775,32 @@ class PiecewiseVolterraStream(_EngineCore):
             self._build_ops(span)
         t_local = self.t
         base = self.R_epoch[None] + t_local[:, None, None] * self.V_epoch[None]
-        a0 = newtonian_all_pairs(self.R_epoch[None], self.masses, self.G, self.eps2)[0]
-        predictor = base + 0.5 * (t_local[:, None, None] ** 2) * a0[None]
+        tl = t_local[:, None, None]
+        derivs = self._prev_end_derivs if self.warm_start else None
+        if derivs is not None:
+            # 4th-order Taylor predictor from the previous window's own Chebyshev
+            # polynomial (a, jerk, snap at its end): the true retarded force
+            a0, j0, s0 = derivs
+            predictor = base + tl**2 / 2 * a0[None] + tl**3 / 6 * j0[None] + tl**4 / 24 * s0[None]
+        else:
+            a0 = newtonian_all_pairs(self.R_epoch[None], self.masses, self.G, self.eps2)[0]
+            predictor = base + 0.5 * tl**2 * a0[None]
         return self._relax_window(base, predictor, self.iterations, self.tol, record_history)
+
+    def _end_derivatives(self, V):
+        """(a, jerk, snap) at the window end from the Chebyshev polynomial of V."""
+        if self.scheme != "chebyshev":
+            return None
+        M = V.shape[0] - 1
+        from .operators import _cheb_value_to_coeff
+        Vinv = _cheb_value_to_coeff(M)[0]
+        C = Vinv @ V.reshape(M + 1, -1)                     # (M+1, N*3)
+        scale = 2.0 / self._span                             # d/dt = (2/span) d/dx
+        out = []
+        for k in (1, 2, 3):
+            Ck = _cheb.chebder(C, m=k, axis=0)
+            out.append((_cheb.chebval(1.0, Ck) * scale**k).reshape(V.shape[1], 3))
+        return tuple(out)
 
     def _first_break(self):
         """Earliest breaking point strictly inside the just-solved window.
@@ -881,6 +916,14 @@ class PiecewiseVolterraStream(_EngineCore):
                 R, V, hist, res, converged, used = self._solve_span(span)
                 total += used
                 self.break_splits += 1
+            # a truncated window is shorter, so it normally converges; if not,
+            # fall back to halving (the break then lies beyond this window end
+            # and is re-detected by the next one)
+            while self.adaptive and not converged and span > min_span:
+                span *= 0.5
+                new_break = None
+                R, V, hist, res, converged, used = self._solve_span(span)
+                total += used
         self.residual_history = res
         if self.accuracy_tol is not None:
             self._span_hint = 1.5 * accepted_span
@@ -899,6 +942,7 @@ class PiecewiseVolterraStream(_EngineCore):
         if new_break is not None:
             self._add_break(new_epoch, new_break)
         self._update_buffer(tg, R, V, new_epoch)
+        self._prev_end_derivs = self._end_derivatives(V)
         self.R_epoch, self.V_epoch = R[-1].copy(), V[-1].copy()
         self.t_epoch = new_epoch
         self.window_index += 1

@@ -80,7 +80,8 @@ class SegmentHistory:
     def __init__(self, initial: BallisticHistory):
         self.initial = initial
         self.segments: list[_Segment] = []
-        self.clamped = 0                     # queries that fell into pruned past
+        self.clamped = 0                     # converged-solution lookups into pruned past
+        self.count_clamps = False            # set by the engine for the final pass
 
     @property
     def t_start(self) -> float:
@@ -124,8 +125,14 @@ class SegmentHistory:
             if before_all.any():
                 r[before_all], v[before_all] = self.initial(j, tq[before_all])
             pruned = rest & ~before_all
-            if pruned.any():                 # past was pruned: clamp to oldest kept
+            if pruned.any() and self.count_clamps:
+                if self.clamped == 0:
+                    import warnings
+                    warnings.warn("retarded lookup reached pruned history; clamping to the "
+                                  "oldest retained sample (increase buffer_safety)",
+                                  RuntimeWarning, stacklevel=2)
                 self.clamped += int(pruned.sum())
+            if pruned.any():                 # past was pruned: clamp to oldest kept
                 seg = self.segments[0]
                 r[pruned] = seg.RV[0, j, :3]
                 v[pruned] = seg.RV[0, j, 3:]
