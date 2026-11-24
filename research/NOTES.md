@@ -148,9 +148,14 @@ verified): phase — in the rotating binary the delay rotates the cross error mo
 infall (W = 0.6) and head-on approach (W = 1.5), c = 1e9…4 → 8→7 and 7→6 iterations,
 i.e. little effect — but **inconclusive**: non-rotating configurations only allow short
 windows before collision, where even the rotating binary shows a small effect (13→10).
-A fair test needs a long-window non-rotating case (e.g. a softened, oscillating radial
-pair through the centre) or an analysis of the linearised error operator in the
-co-rotating frame.
+Fair test done: softened (ε = 0.5) radial pair oscillating through the centre — long
+windows without rotation. Same `x = ωW`: 0.5 period 7→6; 2 periods 13→12; x-matched
+to the binary (x ≈ 17.8, W = 4.44, M = 248) **16 → 14** for c = 1e9 → 4, versus
+**31 → 12** for the rotating binary. → The large extra speed-up needs rotation;
+**supports the phase hypothesis** (delay rotates the cross error by Ωτ, partial
+cancellation), the non-rotating residue (16→14) is the size the shifted-kernel bound
+predicts. Not a proof: next step is the linearised error operator in the co-rotating
+frame (symbol `(J_s + J_c R(Ωτ) e^{−sτ})/s²`).
 
 
 TODO: make the `X_M` invariance + the aberration model (depends on `v_j(t−τ)`, needs a
