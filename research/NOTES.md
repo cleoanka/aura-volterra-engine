@@ -229,6 +229,43 @@ Without tracking DelayDiffEq is non-monotone in tol (binary naive Vern9: tol 1e-
 the binary, dearer for the triple at loose tolerance). The clear wins are **attainable
 accuracy** (machine precision) and **robustness** (monotone in M). Do not claim speed.
 
+### E7 — scaling with N, error control (`exp_e7_scaling.py`, `results/e7_log.txt`)
+Bound random clusters (`problems.cluster`, N equal masses, softening 0.05, c = 10,
+T = 1, naive retardation). Reference: DelayDiffEq Vern9 tol 1e-14 + `dependent_lags`
+(Float64 — BigFloat is too slow at N = 16). Competitor: same at tol 1e-10.
+
+**Finding 1 — fixed windows are not safe.** Without error control the engine reports
+`converged=True` and is wrong by up to 1.5e-1 (N=3: a close encounter). Picard
+convergence is convergence of the *discrete* problem; it says nothing about resolution.
+→ added a-posteriori control `accuracy_tol` (trailing Chebyshev coefficients of the
+**velocities**; halve the window; next window starts at 1.5× the last accepted span).
+Positions under-estimate the error by 2–3 orders near encounters (measured: pos-based
+tol 1e-12 → err 1e-8; vel-based tol 1e-12 → err 3e-12).
+
+| N | DDE tol 1e-10: err / nf / wall | WR-B (C² φ + acc 1e-10): err / rhs / wall | WR-C (+L1): err / rhs / windows / wall |
+|---|---|---|---|
+| 3 | 2.3e-11 / 3250 / 0.27 s | 8.9e-11 / 5024 / 0.45 s | 4.0e-13 / 5632 / 37 / 0.53 s |
+| 4 | 1.7e-11 / 1602 / 0.27 s | 3.3e-11 / 2240 / 0.25 s | 1.2e-13 / 4432 / 27 / 0.65 s |
+| 6 | 8.6e-11 / 738 / 0.25 s | 1.4e-10 / 768 / 0.09 s | 1.8e-14 / 4848 / 35 / 1.5 s |
+| 8 | 3.7e-11 / 3074 / 1.17 s | 6.1e-11 / 4016 / 1.13 s | 1.0e-13 / 12720 / 80 / 7.7 s |
+| 12 | 1.8e-09 / 2130 / 2.09 s | 6.8e-11 / 2800 / 1.15 s | 1.6e-13 / 25744 / 141 / 49 s |
+| 16 | 1.3e-09 / 2786 / 5.03 s | 3.6e-10 / 2848 / 1.80 s | 6.9e-13 / 41904 / 249 / 192 s |
+
+**Finding 2 — modes.** WR-B tracks its tolerance at every N with RHS cost 1.0–1.5× of
+DelayDiffEq, and is *faster in wall time from N ≈ 12* (all-pairs field vectorised over
+nodes × pairs; per-call cost amortises). WR-C (break tracking) buys ~1e-13 but the
+number of level-1 breaks is N(N−1) → windows ∝ N² → unusable beyond N ≈ 6. Practical
+recommendation: **C² initial history + error control** (B) in general; **tracking (C)**
+only for few bodies when machine precision is the goal. (Close encounters favour
+adaptive steppers in RHS count — MCPI literature addresses them with Sundman/KS
+regularisation; out of scope here.)
+
+Engine changes for E7: vectorised retarded field `_retarded_field` (all pairs × nodes,
+one interpolation call per *source* body; equals the per-pair loop to 1e-16, test
+`test_vectorized_retarded_field_matches_pair_loop`); body-tagged breaks
+`(time, level, body)` (correctness: a jump of body j only propagates via pairs (i, j);
+no measurable change on E5 problems — symmetric configurations); `accuracy_tol`.
+
 ### E6 — physics sanity: Laplace secular torque (naive model)
 For a circular equal-mass binary under naive retardation the lagging source gives a
 tangential acceleration `a_t = (Gm/d²) sin(θ/2)/cos²(θ/2)`, `θ = Ωτ`,
@@ -285,20 +322,20 @@ Findings that contradict the v0.3.0 README (fix README before any public claim):
       discontinuity propagation for SD-DDEs.
 - [ ] Rigor of §3: invariant set `X_M`, aberration model (needs bounded `x″`), the
       discrete CGL operator (`ρ(K2)`), and why delay *speeds up* Picard (E2).
-- [ ] Tracking cost for larger N: N(N−1) breaking points per level → windows grow ~N²
-      per level. Options: merge breaks closer than a fraction of W; split only the
-      affected bodies (multirate WR).
-- [ ] Review findings, not yet addressed (design risks): (a) breaks are not tied to a
-      body — a jump in body i is tested against every pair, so some splits are
-      over-conservative (near-coincident breaks 1.9e-5 apart in the triple);
+- [ ] Tracking cost for larger N (E7: windows ∝ N²). Options: split only the affected
+      body (multirate WR: windows per body), or skip breaks whose jump order exceeds
+      what M can resolve (order ≥ ~5 with C² φ is already below 1e-10 at M = 16).
+- [ ] Error control wastes rejected attempts; better predictor for re-solves / new
+      windows (higher-order Taylor from the previous window's end) should cut the
+      ~7 iterations per window.
+- [ ] Review findings, not yet addressed (design risks): (a) [done: body-tagged breaks];
       (b) with `track_breaks` on, presets whose light delay ≪ window (solar,
       spacecraft) crawl in tiny windows — tracking must stay opt-in / be capped;
       (c) truncated re-solves are not re-checked for convergence (reported in
       `WindowResult.converged`, never silently fixed); (d) a lookup into pruned past
       clamps to the oldest node (2e-4 error with `buffer_safety=1.0`; 0 clamps at the
       default 2.5) — interpolate/extrapolate instead, or raise.
-- [ ] Scaling with N (Python loops over pairs today → vectorise over pairs; GPU/Colab
-      only if the paper wants N ≥ 100).
+- [x] Scaling with N: vectorised (E7). GPU/Colab only if the paper wants N ≥ 100.
 - [ ] Long-time runs (many orbits): aberration-model conservation; E6 promoted to a script.
 - [ ] Verify every (?) citation in §1; read Hale 2024 and the 2023 constant-delay
       Chebyshev–Picard paper in full and state the delta precisely.
@@ -312,7 +349,8 @@ Findings that contradict the v0.3.0 README (fix README before any public claim):
 ```bash
 cd ~/aura-volterra-engine
 # Julia env (once): ~/.julia-envs/dde with DelayDiffEq, OrdinaryDiffEq, JSON3
-.venv/bin/python -m pytest -q                          # 25 tests
+.venv/bin/python -m pytest -q                          # 27 tests
+.venv/bin/python research/exp_e7_scaling.py 3 4 6 8 12 16  # ~6 min (N=16 WR-C dominates)
 .venv/bin/python research/exp_e2_convergence_theory.py # ~3 s
 .venv/bin/python research/exp_e2b_limits.py            # ~7 s
 .venv/bin/python research/exp_e5_breaks.py             # ~1 min (+ Julia refs, cached)

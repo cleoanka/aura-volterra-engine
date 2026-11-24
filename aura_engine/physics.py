@@ -56,6 +56,7 @@ from .operators import (
     barycentric_interpolate,
     barycentric_weights_cgl,
     build_scheme,
+    chebyshev_tail,
 )
 from .history import BallisticHistory, SegmentHistory
 
@@ -361,6 +362,57 @@ class _EngineCore:
             rj = rj + tau[:, None] * vj                   # cancel leading aberration
         return rj
 
+    def _node_times(self):
+        """Global times of the current window's nodes."""
+        return self.t
+
+    def _sources_at(self, R, V, TQ):
+        """Source states for a query-time array ``TQ (n, N_i, N_j)``: body ``j``
+        evaluated at ``TQ[:, :, j]``. One interpolation call per *source* body."""
+        n, N = TQ.shape[0], TQ.shape[2]
+        RJ = np.empty((n, N, N, 3))
+        VJ = np.empty((n, N, N, 3))
+        for j in range(N):
+            rq, vq = self._source_state(j, R, V, TQ[:, :, j].reshape(-1))
+            RJ[:, :, j, :] = rq.reshape(n, N, 3)
+            VJ[:, :, j, :] = vq.reshape(n, N, 3)
+        return RJ, VJ
+
+    def _retarded_field(self, R, V):
+        """Retarded Newtonian field, vectorised over all ordered pairs.
+
+        Same light-cone Newton solve and source model as :meth:`_retarded_state`
+        (kept as the per-pair reference), but every pair and node at once.
+        """
+        n, N = R.shape[0], R.shape[1]
+        tn = self._node_times()[:, None, None]
+        Ri = R[:, :, None, :]                                     # receiver i
+        D0 = R[:, None, :, :] - Ri                                # r_j - r_i
+        tau = np.sqrt(np.einsum("kijd,kijd->kij", D0, D0)) / self.c
+        for _ in range(4):                                        # Newton on the light cone
+            RJ, VJ = self._sources_at(R, V, tn - tau)
+            rel = Ri - RJ
+            dist = np.sqrt(np.einsum("kijd,kijd->kij", rel, rel)) + 1e-30
+            g = tau - dist / self.c
+            dg = 1.0 - np.einsum("kijd,kijd->kij", rel / dist[..., None], VJ) / self.c
+            tau = np.clip(tau - g / np.where(np.abs(dg) < 1e-6, 1.0, dg), 0.0, None)
+        RJ, VJ = self._sources_at(R, V, tn - tau)
+        if self.retardation == "aberration":
+            RJ = RJ + tau[..., None] * VJ
+        d = RJ - Ri
+        r2 = np.einsum("kijd,kijd->kij", d, d) + self.eps2
+        idx = np.arange(N)
+        r2[:, idx, idx] = 1.0                                     # self pair: d = 0 anyway
+        w = (self.G * self.masses)[None, None, :] * r2 ** -1.5
+        w[:, idx, idx] = 0.0                                      # no self-force
+        cache = getattr(self, "_tau_cache", None)
+        if cache is not None:
+            for i in range(N):
+                for j in range(N):
+                    if i != j:
+                        cache[(i, j)] = tau[:, i, j]
+        return np.einsum("kij,kijd->kid", w, d)
+
     def accelerations(self, R, V):
         """Full acceleration field ``(n, N, 3)`` for the configured models.
 
@@ -374,6 +426,8 @@ class _EngineCore:
 
         if self.retardation == "none":
             A = newtonian_all_pairs(R, self.masses, self.G, self.eps2)
+        elif getattr(self, "vectorized", True):
+            A = self._retarded_field(R, V)
         else:
             n, N = R.shape[0], R.shape[1]
             A = np.zeros((n, N, 3), dtype=np.float64)
@@ -556,7 +610,8 @@ class PiecewiseVolterraStream(_EngineCore):
                  scheme="chebyshev", accelerator="anderson", retardation=None,
                  pn=None, anderson_depth=5, buffer_safety=2.5,
                  max_buffer_samples=None, tol=1e-9, adaptive=True, min_span_frac=0.05,
-                 initial_A0=None, track_breaks=0):
+                 initial_A0=None, track_breaks=0,
+                 accuracy_tol=None):
         retardation = retardation or ("aberration" if use_retardation else "none")
         pn = pn or ("eih" if use_pn else "none")
         super().__init__(G=G, c=c, softening=softening, relaxation=relaxation,
@@ -583,6 +638,11 @@ class PiecewiseVolterraStream(_EngineCore):
         # DDE breaking-point tracking: number of propagation levels to align
         # window ends with (0 = off). See research/NOTES.md, "breaking points".
         self.track_breaks = int(track_breaks)
+        # a-posteriori error control (Chebyshev only): halve the window while the
+        # trailing Chebyshev coefficients of the positions exceed this (relative to
+        # the position scale). None = off (previous behaviour).
+        self.accuracy_tol = accuracy_tol
+        self.accuracy_halvings = 0
         self.reset()
 
     # -- operators for the current span (rebuilt when the span adapts) ------- #
@@ -598,11 +658,13 @@ class PiecewiseVolterraStream(_EngineCore):
         self.window_index = 0
         self._build_ops(self.window_span)
         self._seed_buffer()
-        # discontinuity set: (time, level). Level 0 = t0, where the solution's
-        # derivative jumps because the initial history phi is not the solution.
-        self.breaks = [(self.t_epoch, 0)]
+        # discontinuity set: (time, level, body). Level 0 = t0 (body -1 = all),
+        # where the derivative jumps because the initial history phi is not the
+        # solution.
+        self.breaks = [(self.t_epoch, 0, -1)]
         self.break_splits = 0
         self._tau_cache = {}
+        self._span_hint = None
 
     @classmethod
     def from_config(cls, cfg, iterations, relaxation, use_retardation, use_pn,
@@ -651,6 +713,9 @@ class PiecewiseVolterraStream(_EngineCore):
         keep = self._buffer_length(R[-1])
         self.history.prune(new_epoch - keep)
         self.buffer_span = self.history.span()
+
+    def _node_times(self):
+        return self.t_epoch + self.t
 
     # source lookup: inside window -> interpolate; before epoch -> history
     def _source_state(self, j, R, V, tq):
@@ -705,27 +770,33 @@ class PiecewiseVolterraStream(_EngineCore):
     def _first_break(self):
         """Earliest breaking point strictly inside the just-solved window.
 
-        A derivative jump at time ``d`` reaches body ``i`` through pair ``(i, j)``
-        when ``t - tau_ij(t) = d``. ``g(t) = t - tau_ij(t)`` is increasing
-        (``g' = 1 - tau' > 0`` for ``|v| < c``), so a sign change of ``g - d``
-        over the window's nodes brackets a unique root, refined by bisection on
-        the window's own (barycentric / linear) interpolant of ``tau``.
-        Returns ``(xi_local, level)`` or ``None``.
+        Breaks are tracked per body: ``(d, level, body)`` says that ``body``'s
+        trajectory has a derivative jump at ``d`` (``body = -1``: every body, the
+        initial-history jump at ``t0``). A jump of body ``j`` at ``d`` reaches body
+        ``i`` -- and only ``i`` -- through pair ``(i, j)`` when ``t - tau_ij(t) = d``.
+        ``g(t) = t - tau_ij(t)`` is increasing (``g' = 1 - tau' > 0`` for
+        ``|v| < c``), so a sign change of ``g - d`` over the window's nodes
+        brackets a unique root, refined by bisection on the window's own
+        interpolant of ``tau``.
+
+        Returns ``(xi_local, [(level, body), ...])`` -- every body whose break
+        coincides with the earliest root (within the merge tolerance) -- or
+        ``None``.
         """
         if not self._tau_cache or self.track_breaks <= 0:
             return None
         tg = self.t_epoch + self.t
         span = self._span
         margin = 1e-6 * span
-        # a root this close to a break that is already registered is that same
-        # break (the truncated re-solve can leave the window end a hair short of
-        # it); splitting again would cut a sliver window and duplicate the chain
+        # a root this close to a break that is already registered (for the same
+        # receiving body) is that same break: the truncated re-solve can leave the
+        # window end a hair short of it; splitting again would cut a sliver window
         same = self._break_tol()
-        best = None
+        roots = []
         for (i, j), tau in self._tau_cache.items():
             g = tg - tau
-            for d, lvl in self.breaks:
-                if lvl >= self.track_breaks:
+            for d, lvl, body in self.breaks:
+                if lvl >= self.track_breaks or body not in (-1, j):
                     continue
                 h = g - d
                 if not (h[0] < 0.0 < h[-1]):
@@ -746,26 +817,44 @@ class PiecewiseVolterraStream(_EngineCore):
                     else:
                         lo = mid
                 xi = 0.5 * (lo + hi)
-                if any(abs(self.t_epoch + xi - d2) < same for d2, _ in self.breaks):
+                if self._known_break(self.t_epoch + xi, i):
                     continue
-                if margin < xi < span - margin and (best is None or xi < best[0]):
-                    best = (xi, lvl + 1)
-        return best
+                if margin < xi < span - margin:
+                    roots.append((xi, lvl + 1, i))
+        if not roots:
+            return None
+        x0 = min(r[0] for r in roots)
+        return x0, sorted({(l, b) for x, l, b in roots if x - x0 < same})
+
+    def _trunc_err(self, V):
+        # velocities, not positions: positions are one integral smoother, so their
+        # tail under-estimates the error by 2-3 orders near close encounters
+        # (research/NOTES.md, E7)
+        scale = max(float(np.abs(V).max()), 1e-30)
+        return chebyshev_tail(V) / scale
 
     def _break_tol(self):
         return 1e-4 * self.window_span
 
-    def _add_break(self, t_break, level):
+    def _known_break(self, t_break, body):
         tol = self._break_tol()
-        if not any(abs(t_break - d) < tol for d, _ in self.breaks):
-            self.breaks.append((t_break, level))
+        return any(abs(t_break - d) < tol and b in (-1, body) for d, _, b in self.breaks)
+
+    def _add_break(self, t_break, sources):
+        for level, body in sources:
+            if not self._known_break(t_break, body):
+                self.breaks.append((t_break, level, body))
         # a jump at d can only be reached while t - tau_max <= d
         horizon = t_break - 2.0 * self.buffer_safety * self._max_delay(self.R_epoch) - self._span
-        self.breaks = [(d, l) for d, l in self.breaks if d >= horizon]
+        self.breaks = [br for br in self.breaks if br[0] >= horizon]
 
     def step(self) -> WindowResult:
         """Relax the next window (adaptively shrinking on non-convergence)."""
         span = self.window_span
+        if self.accuracy_tol is not None and getattr(self, "_span_hint", None):
+            # start from the last accepted span (grown by 1.5x), not the nominal
+            # one, so a hard stretch is not re-discovered by halving every window
+            span = min(self.window_span, self._span_hint)
         min_span = self.window_span * self.min_span_frac
         R, V, hist, res, converged, used = self._solve_span(span)
         total = used
@@ -773,6 +862,13 @@ class PiecewiseVolterraStream(_EngineCore):
             span *= 0.5
             R, V, hist, res, converged, used = self._solve_span(span)
             total += used
+        if self.accuracy_tol is not None and self.scheme == "chebyshev":
+            while converged and span > min_span and self._trunc_err(V) > self.accuracy_tol:
+                span *= 0.5
+                R, V, hist, res, converged, used = self._solve_span(span)
+                total += used
+                self.accuracy_halvings += 1
+        accepted_span = span
         # align the window end with the earliest breaking point inside it (the
         # root moves slightly with the truncated solve: repeat to self-consistency)
         new_break = None
@@ -781,12 +877,13 @@ class PiecewiseVolterraStream(_EngineCore):
                 fb = self._first_break()
                 if fb is None:
                     break
-                span, lvl = fb
-                new_break = lvl
+                span, new_break = fb
                 R, V, hist, res, converged, used = self._solve_span(span)
                 total += used
                 self.break_splits += 1
         self.residual_history = res
+        if self.accuracy_tol is not None:
+            self._span_hint = 1.5 * accepted_span
 
         tg = self.t_epoch + self.t
         e = newtonian_energy(self.masses, R, V, self.G, self.eps2)

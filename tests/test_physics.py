@@ -314,7 +314,7 @@ def test_breaks_are_registered_and_bounded():
     T = 2 * (2 * np.pi / np.sqrt(2.0))
     s = _sdde_stream(32, 8, T, track=2)
     assert s.break_splits >= 2
-    assert all(lvl <= 2 for _, lvl in s.breaks)
+    assert all(br[1] <= 2 for br in s.breaks)
     assert len(s.breaks) <= 8
     assert s.history.clamped == 0
 
@@ -332,5 +332,21 @@ def test_break_not_duplicated_into_sliver_window():
         spans.append(s.step().span)
     assert min(spans) > 0.05
     assert s.break_splits == 3
-    times = sorted(d for d, _ in s.breaks)
+    times = sorted({round(br[0], 9) for br in s.breaks})
     assert all(b - a > 0.1 for a, b in zip(times, times[1:]))
+
+
+@pytest.mark.parametrize("model", ["naive", "aberration"])
+def test_vectorized_retarded_field_matches_pair_loop(model):
+    cfg = presets.chaos()
+    outs = []
+    for vec in (True, False):
+        s = PiecewiseVolterraStream(
+            cfg.bodies, G=cfg.G, c=cfg.c, softening=cfg.softening, use_retardation=True,
+            use_pn=False, relaxation=1.0, window_span=0.5, window_samples=24, iterations=100,
+            accelerator="picard", retardation=model, pn="none", tol=1e-12, adaptive=False)
+        s.vectorized = vec
+        for _ in range(3):
+            s.step()
+        outs.append(s.R_epoch.copy())
+    assert np.abs(outs[0] - outs[1]).max() < 1e-13

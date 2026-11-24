@@ -132,6 +132,21 @@ def _cheb_value_to_coeff(M: int) -> tuple[np.ndarray, np.ndarray]:
     return np.linalg.inv(V), x
 
 
+_COEFF_CACHE: dict[int, np.ndarray] = {}
+
+
+def chebyshev_tail(values: np.ndarray, k: int = 2) -> float:
+    """Magnitude of the last ``k`` Chebyshev coefficients of nodal ``values``
+    (``(M+1, ...)`` on CGL nodes): the standard a-posteriori truncation-error
+    estimate for a Chebyshev representation."""
+    M = values.shape[0] - 1
+    Vinv = _COEFF_CACHE.get(M)
+    if Vinv is None:
+        Vinv = _COEFF_CACHE.setdefault(M, _cheb_value_to_coeff(M)[0])
+    C = Vinv @ values.reshape(M + 1, -1)
+    return float(np.abs(C[-k:]).max())
+
+
 def chebyshev_integration_matrix(M: int) -> tuple[np.ndarray, np.ndarray]:
     """Nodal 'integrate from the left endpoint' operator ``B`` on CGL nodes.
 

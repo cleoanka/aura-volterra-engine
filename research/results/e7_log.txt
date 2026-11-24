@@ -1,0 +1,30 @@
+N=  3 ballistic DDE tol1e-10 err= 1.2e-09 nf=  3234 wall=0.234s
+N=  3 ballistic WR-A L=0 err= 1.5e-01 rhs=   640 windows=   4 wall=0.026s conv=True
+N=  3 quadratic DDE tol1e-10 err= 2.3e-11 nf=  3250 wall=0.273s
+N=  3 quadratic WR-B L=0 err= 8.9e-11 rhs=  5024 windows=  34 wall=0.454s conv=True
+N=  3 quadratic WR-C L=1 err= 4.0e-13 rhs=  5632 windows=  37 wall=0.528s conv=True
+N=  4 ballistic DDE tol1e-10 err= 3.6e-10 nf=  1506 wall=0.256s
+N=  4 ballistic WR-A L=0 err= 6.4e-02 rhs=   528 windows=   4 wall=0.033s conv=True
+N=  4 quadratic DDE tol1e-10 err= 1.7e-11 nf=  1602 wall=0.268s
+N=  4 quadratic WR-B L=0 err= 3.3e-11 rhs=  2240 windows=  16 wall=0.246s conv=True
+N=  4 quadratic WR-C L=1 err= 1.2e-13 rhs=  4432 windows=  27 wall=0.645s conv=True
+N=  6 ballistic DDE tol1e-10 err= 1.5e-10 nf=  1026 wall=0.319s
+N=  6 ballistic WR-A L=0 err= 2.0e-07 rhs=   416 windows=   4 wall=0.041s conv=True
+N=  6 quadratic DDE tol1e-10 err= 8.6e-11 nf=   738 wall=0.246s
+N=  6 quadratic WR-B L=0 err= 1.4e-10 rhs=   768 windows=   6 wall=0.087s conv=True
+N=  6 quadratic WR-C L=1 err= 1.8e-14 rhs=  4848 windows=  35 wall=1.496s conv=True
+N=  8 ballistic DDE tol1e-10 err= 1.2e-10 nf=  3170 wall=1.246s
+N=  8 ballistic WR-A L=0 err= 4.9e-03 rhs=   656 windows=   4 wall=0.091s conv=True
+N=  8 quadratic DDE tol1e-10 err= 3.7e-11 nf=  3074 wall=1.168s
+N=  8 quadratic WR-B L=0 err= 6.1e-11 rhs=  4016 windows=  27 wall=1.129s conv=True
+N=  8 quadratic WR-C L=1 err= 1.0e-13 rhs= 12720 windows=  80 wall=7.715s conv=True
+N= 12 ballistic DDE tol1e-10 err= 9.0e-11 nf=  2290 wall=2.116s
+N= 12 ballistic WR-A L=0 err= 2.8e-06 rhs=   592 windows=   4 wall=0.141s conv=True
+N= 12 quadratic DDE tol1e-10 err= 1.8e-09 nf=  2130 wall=2.093s
+N= 12 quadratic WR-B L=0 err= 6.8e-11 rhs=  2800 windows=  18 wall=1.154s conv=True
+N= 12 quadratic WR-C L=1 err= 1.6e-13 rhs= 25744 windows= 141 wall=48.674s conv=True
+N= 16 ballistic DDE tol1e-10 err= 3.7e-10 nf=  2578 wall=4.562s
+N= 16 ballistic WR-A L=0 err= 3.8e-04 rhs=   544 windows=   4 wall=0.209s conv=True
+N= 16 quadratic DDE tol1e-10 err= 1.3e-09 nf=  2786 wall=5.030s
+N= 16 quadratic WR-B L=0 err= 3.6e-10 rhs=  2848 windows=  20 wall=1.803s conv=True
+N= 16 quadratic WR-C L=1 err= 6.9e-13 rhs= 41904 windows= 249 wall=191.680s conv=True

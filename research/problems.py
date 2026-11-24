@@ -125,14 +125,14 @@ def reference(p: Problem, T: float, tout, tol=1e-13, alg="Vern9", use_cache=True
 
 def stream(p: Problem, W: float, nodes: int, *, iterations=200, tol=1e-13,
            accelerator="picard", relaxation=1.0, scheme="chebyshev", pn="none",
-           history="ballistic", track_breaks=0):
+           history="ballistic", track_breaks=0, accuracy_tol=None, min_span_frac=0.05):
     return PiecewiseVolterraStream(
         p.bodies(), G=p.G, c=p.c, softening=p.softening, use_retardation=True,
         use_pn=False, relaxation=relaxation, window_span=W, window_samples=nodes,
         iterations=iterations, scheme=scheme, accelerator=accelerator,
-        retardation=p.retardation, pn=pn, tol=tol, adaptive=False,
+        retardation=p.retardation, pn=pn, tol=tol, adaptive=accuracy_tol is not None,
         initial_A0=consistent_A0(p) if history == "quadratic" else None,
-        track_breaks=track_breaks)
+        track_breaks=track_breaks, accuracy_tol=accuracy_tol, min_span_frac=min_span_frac)
 
 
 def run_stream(p: Problem, T: float, W: float, nodes: int, **kw):
@@ -159,3 +159,15 @@ def pair_evals_engine(iters, nodes, N):
     return iters * nodes
 
 
+
+
+def cluster(N, c=10.0, retardation="naive", softening=0.05, seed=1):
+    """Bound random cluster: N equal masses (total 1) in the unit ball, small
+    random velocities (virial ratio ~0.5), zero total momentum."""
+    rng = np.random.default_rng(seed)
+    R0 = rng.uniform(-1, 1, (N * 4, 3))
+    R0 = R0[np.linalg.norm(R0, axis=1) <= 1.0][:N]
+    R0 -= R0.mean(0)
+    V0 = rng.normal(0, 0.35, (N, 3))
+    V0 -= V0.mean(0)
+    return Problem(f"cluster{N}", [1.0 / N] * N, R0, V0, c, softening, retardation, omega=1.0)
