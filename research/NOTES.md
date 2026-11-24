@@ -50,8 +50,8 @@ before citing.**
 | Retarded two-body (physics) | Driver, *A two-body problem of classical electrodynamics: the one-dimensional case*, Ann. Phys. 1963, doi 10.1016/0003-4916(63)90227-6 (✓) — electrodynamic 1D two-body, existence | no MCPI |
 | Retarded gravity physics | Laplace (Mécanique céleste); Carlip, *Aberration and the speed of gravity*, arXiv gr-qc/9909087 (✓; journal ref NOT confirmed — agy said Phys. Lett. A 2000, check) | — |
 | SD-DDE solver software | Widmann & Rackauckas, *DelayDiffEq: Generating DDE solvers via recursive embedding of ODE solvers*, arXiv:2208.12879 (✓ — agy gave a wrong title); RADAR5: Guglielmi & Hairer, Computing 67 (2001) 1–12, doi 10.1007/s006070170013 (✓); ddesd (Shampine) (?) | benchmarks are 1–4-dim; no N-body |
-| **Breaking points for implicit/state-dependent DDEs** | Guglielmi & Hairer, *Computing breaking points in implicit delay differential equations* (✓ title, Hairer preprint page; read it!) | step-marching (RADAR5); the closest prior work to our break alignment — the delta is doing it inside windowed Picard–Chebyshev with one-sided join lookups and Newton landing on the converged iterate |
-| Recent survey | *Practicalities of State-Dependent and Threshold Delay Differential Equations*, arXiv:2510.17126 (✓ title) | survey — check what it says about breaking points + spectral methods |
+| **Breaking points for implicit/state-dependent DDEs** | Guglielmi & Hairer, *Computing breaking points in implicit delay differential equations* (✓ title; preprint page returned HTTP 403 — full text NOT read yet) | step-marching (RADAR5); the closest prior work to our break alignment — the delta is doing it inside windowed Picard–Chebyshev with one-sided join lookups and Newton landing on the converged iterate |
+| Recent survey | Humphries, Eremin, Wang, *Practicalities of State-Dependent and Threshold Delay Differential Equations*, arXiv:2510.17126 (✓, partly read) | breaking point of order k (Bellen–Zennaro def.); propagation ξ_j − τ(ξ_j, u(ξ_j)) = ξ_i raises the order by **at least one** (1st-order DDEs); only finitely many need tracking; location accuracy ξ(h) − ξ_j = O(h^{p/(k+1)}) (Thm 4.2); "it is ξ_j^h, and not ξ_j, that should be in the mesh". Methods: FCRK Runge–Kutta; no spectral/WR; no neutral discussion seen |
 | Andò & Sieber arXiv:2410.07375 (✓) | piecewise-polynomial collocation convergence for periodic BVPs of SD-DDEs | BVP, not IVP/WR |
 
 **Gap that survives the check:** Picard/waveform relaxation + Chebyshev for a
@@ -304,6 +304,14 @@ c = 8), no tracking, M = 8…96, error at W vs 128-bit reference (tol 1e-20):
 Ordering exactly as predicted (including the predicted tie naive+ballistic ≈
 aberration+C²), and every slope ≈ **−(k − 1)**. Errors are non-monotone in M (typical
 for a kink at a non-node point), so slopes are least-squares fits.
+
+**Positioning (important).** For first-order DDEs the standard result (Bellen–Zennaro;
+see Humphries–Eremin–Wang, arXiv:2510.17126) is that each propagation raises the
+breaking-point order by *at least one*. The rule below is that result specialised to
+second-order systems `x'' = f(x, x_delayed, x'_delayed, x''_delayed)` written in
+Volterra form — +2 per level through positions, +1 through velocities, 0 through
+accelerations (neutral) — plus the quadrature rate. Present it as a corollary with the
+neutral case and the measured M-rate as the new content, not as a new theorem.
 
 **Lemma (draft, to prove).** Let `φ` have a jump in the `k_φ`-th derivative at `t0`
 (`k_φ = 2` ballistic, `3` C²) and let the force depend on the source's `q`-th
