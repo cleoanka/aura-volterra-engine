@@ -63,6 +63,10 @@ class BallisticHistory:
         return (self.R0[j] + self.V0[j] * dt + 0.5 * self.A0[j] * dt**2,
                 self.V0[j] + self.A0[j] * dt)
 
+    def acc(self, j: int, tq: np.ndarray):
+        a = np.zeros(3) if self.A0 is None else self.A0[j]
+        return np.broadcast_to(a, (len(tq), 3)).copy()
+
 
 @dataclass
 class _Segment:
@@ -71,6 +75,7 @@ class _Segment:
     t: np.ndarray           # (n,) global node times, ascending
     RV: np.ndarray          # (n, N, 6)
     weights: np.ndarray | None   # barycentric weights (CGL) or None (Hermite)
+    A: np.ndarray | None = None  # (n, N, 3) accelerations (needed by neutral models)
 
 
 class SegmentHistory:
@@ -87,11 +92,45 @@ class SegmentHistory:
     def t_start(self) -> float:
         return self.segments[0].ta if self.segments else self.initial.t0
 
-    def append(self, t_nodes, R, V, weights=None) -> None:
+    def append(self, t_nodes, R, V, weights=None, A=None) -> None:
         t_nodes = np.asarray(t_nodes, dtype=np.float64)
         RV = np.concatenate([R, V], axis=2).astype(np.float64, copy=True)
         self.segments.append(_Segment(float(t_nodes[0]), float(t_nodes[-1]),
-                                      t_nodes.copy(), RV, weights))
+                                      t_nodes.copy(), RV, weights,
+                                      None if A is None else np.array(A, dtype=np.float64)))
+
+    def acc(self, j: int, tq: np.ndarray, side=None, tol: float = 0.0):
+        """Source acceleration on the stored past (Lienard-Wiechert radiation term).
+
+        Accelerations jump at breaking points, which are segment joins. ``side``
+        (per query: -1 left limit, +1 right limit, 0 don't care) decides which
+        segment answers a query within ``tol`` of a join: the window's last node
+        needs the left limit, its first node the right limit.
+        """
+        tq = np.asarray(tq, dtype=np.float64)
+        side = np.zeros(len(tq)) if side is None else np.asarray(side)
+        a = np.zeros((len(tq), 3))
+        done = np.zeros(len(tq), dtype=bool)
+        for seg in reversed(self.segments):                  # newest first
+            near_ta = np.abs(tq - seg.ta) <= tol
+            near_tb = np.abs(tq - seg.tb) <= tol
+            lo = ((tq >= seg.ta) & ~(near_ta & (side < 0))) | (near_ta & (side > 0))
+            hi = (tq <= seg.tb) | (near_tb & (side < 0))
+            m = (~done) & lo & hi
+            if not m.any() or seg.A is None:
+                continue
+            if seg.weights is not None:
+                a[m] = barycentric_interpolate(seg.t, seg.A[:, j, :], seg.weights, tq[m])
+            else:
+                a[m] = _hermite_linear_v(seg.t, seg.A[:, j, :], tq[m])
+            done |= m
+        before = (~done) & (tq < self.initial.t0 + tol * (side < 0))
+        if before.any():
+            a[before] = self.initial.acc(j, tq[before])
+        pruned = (~done) & ~before
+        if pruned.any() and self.segments and self.segments[0].A is not None:
+            a[pruned] = self.segments[0].A[0, j]
+        return a
 
     def prune(self, t_keep: float) -> None:
         """Drop windows that end before ``t_keep`` (keep at least one)."""

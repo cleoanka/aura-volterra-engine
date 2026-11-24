@@ -369,3 +369,40 @@ def test_warm_start_same_answer_fewer_iterations():
         res[warm] = (s.R_epoch.copy(), it)
     assert np.abs(res[True][0] - res[False][0]).max() < 1e-12
     assert res[True][1] < res[False][1]
+
+
+def _lw_stream(c, M=24, track=50):
+    v = 0.5 * np.sqrt(2.0)
+    bodies = [Body("e+", 1.0, [0.5, 0, 0], [0, v, 0]), Body("e-", 1.0, [-0.5, 0, 0], [0, -v, 0])]
+    return PiecewiseVolterraStream(
+        bodies, G=1.0, c=c, softening=0.0, use_retardation=True, use_pn=False,
+        relaxation=1.0, window_span=0.25, window_samples=M, iterations=200,
+        accelerator="picard", retardation="lw", pn="none", tol=1e-13, adaptive=False,
+        track_breaks=track, charges=[1.0, -1.0])
+
+
+def test_lienard_wiechert_static_limit_is_coulomb():
+    """c -> infinity: LW + relativistic mechanics == Newtonian (G m m = q q = 1)."""
+    lw = _lw_stream(1e12, track=0)
+    g = PiecewiseVolterraStream(
+        _binary_bodies(), G=1.0, c=1e12, softening=0.0, use_retardation=False, use_pn=False,
+        relaxation=1.0, window_span=0.25, window_samples=24, iterations=200,
+        accelerator="picard", retardation="none", pn="none", tol=1e-13, adaptive=False)
+    for _ in range(8):
+        lw.step(), g.step()
+    assert np.abs(lw.R_epoch - g.R_epoch).max() < 1e-13
+
+
+def test_lienard_wiechert_neutral_needs_all_levels():
+    """Neutral DDE: accuracy is set by the tracked levels, not by M; tracking all
+    levels makes M=16 and M=32 agree to round-off."""
+    def run(M, track):
+        s = _lw_stream(8.0, M=M, track=track)
+        while s.t_epoch < 1.0 - 1e-12:
+            s.window_span = min(0.25, 1.0 - s.t_epoch)
+            s.step()
+        return s.R_epoch
+    m_effect = np.abs(run(16, 1) - run(32, 1)).max()           # plateau: M barely matters
+    level_effect = np.abs(run(32, 1) - run(32, 50)).max()      # the tracked level does
+    assert m_effect < 0.5 * level_effect
+    assert np.abs(run(16, 50) - run(32, 50)).max() < 1e-14

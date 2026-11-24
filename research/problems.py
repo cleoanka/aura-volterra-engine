@@ -37,6 +37,8 @@ class Problem:
     retardation: str = "naive"
     G: float = 1.0
     omega: float = 1.0            # characteristic angular frequency (for Omega*W)
+    charges: list | None = None   # Lienard-Wiechert model only
+    no_radiation: bool = False    # diagnostics: drop the acceleration (radiation) field
 
     def bodies(self):
         return [Body(f"b{k}", m, self.R0[k], self.V0[k]) for k, m in enumerate(self.masses)]
@@ -106,6 +108,10 @@ def reference(p: Problem, T: float, tout, tol=1e-13, alg="Vern9", use_cache=True
         spec["bigfloat"] = True
     if dependent_lags:
         spec["dependent_lags"] = True
+    if getattr(p, "charges", None) is not None:
+        spec["charges"] = list(p.charges)
+    if getattr(p, "no_radiation", False):
+        spec["no_radiation"] = True
     if history == "quadratic":
         spec["A0"] = consistent_A0(p).tolist()
     import hashlib
@@ -132,6 +138,7 @@ def stream(p: Problem, W: float, nodes: int, *, iterations=200, tol=1e-13,
         iterations=iterations, scheme=scheme, accelerator=accelerator,
         retardation=p.retardation, pn=pn, tol=tol, adaptive=accuracy_tol is not None,
         initial_A0=consistent_A0(p) if history == "quadratic" else None,
+        charges=p.charges,
         track_breaks=track_breaks, accuracy_tol=accuracy_tol, min_span_frac=min_span_frac)
 
 
@@ -171,3 +178,10 @@ def cluster(N, c=10.0, retardation="naive", softening=0.05, seed=1):
     V0 = rng.normal(0, 0.35, (N, 3))
     V0 -= V0.mean(0)
     return Problem(f"cluster{N}", [1.0 / N] * N, R0, V0, c, softening, retardation, omega=1.0)
+
+
+def lw_binary(c=8.0, d=1.0):
+    """Classical 'positronium': charges +1/-1, unit masses, Coulomb circular orbit
+    (identical to binary() in the c -> infinity limit). Lienard-Wiechert model."""
+    p = binary(c=c, retardation="lw", d=d)
+    return p.with_(name="lw-binary", charges=[1.0, -1.0])

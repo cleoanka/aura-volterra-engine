@@ -404,6 +404,44 @@ P/4, M = 24. Secular rates = linear fit over the run; accuracy vs DelayDiffEq (V
 - Framing consequence for the paper: the "aberration" model is *not* conservative,
   only higher order (β³) — state it that way; never call it physical gravity.
 
+### E10 — a physical SD-DDE: classical electrodynamic two-body (`exp_e10_lienard_wiechert.py`)
+Answer to "retarded Newton is a toy": `retardation="lw"` = Liénard–Wiechert fields
+(Gaussian units, Coulomb constant 1) + relativistic mechanics `a = (F − (v·F)v/c²)/(γm)`;
+"classical positronium" (charges ±1, unit masses, Coulomb-circular start, c = 8 → β ≈ 0.09).
+The radiation field `n×((n−β)×β̇)/(cκ³R)` needs the source **acceleration** at the
+retarded time → a **neutral** SD-DDE (Driver's problem class). Reference: DelayDiffEq
+`neutral=true`, source acceleration from the history derivative `h(p, t, Val{1})`, 128-bit.
+c → ∞ check: identical to the Newtonian binary to 1e-15.
+
+(a) engine error vs tracking level (W = T/4, T = 1 ≈ 8τ):
+
+| L | windows | M=16 | M=24 | M=32 | M=48 |
+|---|---|---|---|---|---|
+| 0 | 4 | 6.9e-6 | 2.7e-6 | 1.3e-6 | 9.5e-7 |
+| 1 | 5 | 2.2e-8 | 1.9e-8 | 1.7e-8 | 1.7e-8 |
+| 2 | 6 | 1.6e-10 | 1.6e-10 | 1.7e-10 | 1.7e-10 |
+| 4 | 7 | 1.6e-14 | 5.7e-15 | 9.3e-15 | 1.1e-14 |
+| 6 | 8 | 1.1e-16 | 2.2e-16 | 2.2e-16 | 1.4e-16 |
+| ≥8 | 9 | 1.7e-16 | 2.8e-16 | 1.4e-16 | 9.7e-17 |
+
+Exactly the neutral prediction of the order rule (q = 2 ⇒ `k_ℓ = k_φ`, no smoothing):
+**M does not help at fixed L** (plateaus), and each tracked level gains a constant
+factor ≈ 60–100 — the neutral jump amplitude decays per level by
+`|∂f/∂a_j| ≈ q²/(m c² R) = 1/64`. Once every break inside T is tracked: round-off.
+
+(b) DelayDiffEq neutral, Float64, best over Vern9/Vern7 × lags/no-lags × tol 1e-8…1e-14:
+**6.3e-14** (Vern9, tol 1e-14, nf = 4674). WR: **~1e-16** at M = 16 (≈ 9 windows × ~10
+iterations × 16 nodes ≈ 1.5k RHS).
+
+Engineering needed for the neutral case (both are generic, also used by gravity runs):
+- **One-sided source lookups at joins**: the acceleration jumps *in value* at a break, so
+  a window's last node must read the left limit and its first node the right limit
+  (`SegmentHistory.acc(side=)`). Without it: ~M⁻² error from the end-node weights
+  (observed 1.8e-7 / 7.8e-8 at M = 32 / 48 before the fix).
+- **Root refinement**: the bisection root comes from a window that straddles the kink
+  (only ~6e-8 accurate); a Newton step on `g(t_end) = t_end − τ(t_end) − d` with the
+  truncated window's Chebyshev τ lands the window end on the root to ~1e-15.
+
 ## 5. Bugs found and fixed on this branch (engine)
 
 1. **Segmented batch `propagate(n_segments>1)` used a ballistic past at every segment
@@ -468,8 +506,8 @@ Findings that contradict the v0.3.0 README (fix README before any public claim):
 - [ ] Verify every (?) citation in §1; read Hale 2024 and the 2023 constant-delay
       Chebyshev–Picard paper in full and state the delta precisely.
 - [ ] RADAR5 / ddesd comparison (optional; DelayDiffEq is the strongest open baseline).
-- [ ] A physically meaningful SD-DDE beyond the toy: retarded electrodynamic two-body
-      (Driver; Liénard–Wiechert) — same machinery.
+- [x] Physical SD-DDE: Liénard–Wiechert two-body, neutral (E10). [ ] radiation/energy
+      balance check; N > 2 charges; compare with Driver's existence results.
 - [ ] arXiv: a first submission in math.NA / physics.comp-ph needs an endorser.
 
 ## 7. Reproduce
@@ -482,6 +520,7 @@ cd ~/aura-volterra-engine
 .venv/bin/python research/exp_e6_laplace.py            # ~10 s
 .venv/bin/python research/exp_e8_break_order.py        # ~30 s
 .venv/bin/python research/exp_e9_longtime.py           # ~30 s
+.venv/bin/python research/exp_e10_lienard_wiechert.py  # ~1 min
 .venv/bin/python research/exp_e2_convergence_theory.py # ~3 s
 .venv/bin/python research/exp_e2b_limits.py            # ~7 s
 .venv/bin/python research/exp_e5_breaks.py             # ~1 min (+ Julia refs, cached)

@@ -414,6 +414,86 @@ class _EngineCore:
                         cache[(i, j)] = tau[:, i, j]
         return np.einsum("kij,kijd->kid", w, d)
 
+    def _source_acc(self, j, tq, side=None):
+        """Source acceleration at global times ``tq``: the current iterate's
+        acceleration inside the window (lagged one Picard step, exact at the fixed
+        point), the stored past before it. ``side`` picks the one-sided limit at
+        a join (see :meth:`SegmentHistory.acc`)."""
+        A = getattr(self, "_A_cur", None)
+        tn = self._node_times()
+        t0 = tn[0]
+        tol = 1e-8 * (tn[-1] - tn[0])
+        side = np.zeros(len(tq)) if side is None else side
+        near = np.abs(tq - t0) <= tol
+        inside = ((tq >= t0) & ~(near & (side < 0))) | (near & (side > 0))
+        out = np.zeros((len(tq), 3))
+        if inside.any() and A is not None:
+            out[inside] = barycentric_interpolate(tn, A[:, j, :], self._bw, tq[inside])
+        past = ~inside
+        if past.any():
+            h = getattr(self, "history", None)
+            if h is not None and hasattr(h, "acc"):
+                out[past] = h.acc(j, tq[past], side[past], tol)
+        return out
+
+    def _lw_field(self, R, V):
+        """Liénard–Wiechert N-body (Gaussian units, Coulomb constant 1),
+        relativistic mechanics. Source position, velocity AND acceleration are
+        taken on the light cone -> a neutral state-dependent-delay system."""
+        n, N = R.shape[0], R.shape[1]
+        c = self.c
+        tn = self._node_times()[:, None, None]
+        Ri = R[:, :, None, :]
+        D0 = R[:, None, :, :] - Ri
+        tau = np.sqrt(np.einsum("kijd,kijd->kij", D0, D0)) / c
+        for _ in range(4):
+            RJ, VJ = self._sources_at(R, V, tn - tau)
+            rel = Ri - RJ
+            dist = np.sqrt(np.einsum("kijd,kijd->kij", rel, rel)) + 1e-30
+            g = tau - dist / c
+            dg = 1.0 - np.einsum("kijd,kijd->kij", rel / dist[..., None], VJ) / c
+            tau = np.clip(tau - g / np.where(np.abs(dg) < 1e-6, 1.0, dg), 0.0, None)
+        TQ = tn - tau
+        RJ, VJ = self._sources_at(R, V, TQ)
+        AJ = np.empty_like(RJ)
+        node_side = np.zeros(n)
+        node_side[0], node_side[-1] = 1.0, -1.0          # right / left limits at the ends
+        side = np.repeat(node_side, N)
+        for j in range(N):
+            AJ[:, :, j, :] = self._source_acc(j, TQ[:, :, j].reshape(-1), side).reshape(n, N, 3)
+        idx = np.arange(N)
+        rel = Ri - RJ                                              # source -> receiver
+        Rn2 = np.einsum("kijd,kijd->kij", rel, rel) + self.eps2
+        Rn2[:, idx, idx] = 1.0
+        Rn = np.sqrt(Rn2)
+        nv = rel / Rn[..., None]
+        beta = VJ / c
+        bdot = AJ / c
+        if getattr(self, "_lw_no_radiation", False):     # diagnostics only
+            bdot = np.zeros_like(bdot)
+        kappa = 1.0 - np.einsum("kijd,kijd->kij", nv, beta)
+        nb = nv - beta
+        b2 = np.einsum("kijd,kijd->kij", beta, beta)
+        q = self.charges
+        E = (q[None, None, :, None] * (
+            nb * ((1.0 - b2) / (kappa**3 * Rn2))[..., None]
+            + np.cross(nv, np.cross(nb, bdot)) / (c * kappa**3 * Rn)[..., None]))
+        E[:, idx, idx, :] = 0.0
+        B = np.cross(nv, E)
+        vi = V[:, :, None, :] / c
+        F = q[None, :, None] * (E + np.cross(np.broadcast_to(vi, E.shape), B)).sum(axis=2)
+        v2 = np.einsum("knd,knd->kn", V, V) / c**2
+        gamma = 1.0 / np.sqrt(np.clip(1.0 - v2, 1e-12, None))
+        vF = np.einsum("knd,knd->kn", V, F)
+        A = (F - (vF / c**2)[..., None] * V) / (gamma * self.masses[None, :])[..., None]
+        cache = getattr(self, "_tau_cache", None)
+        if cache is not None:
+            for i in range(N):
+                for j in range(N):
+                    if i != j:
+                        cache[(i, j)] = tau[:, i, j]
+        return A
+
     def accelerations(self, R, V):
         """Full acceleration field ``(n, N, 3)`` for the configured models.
 
@@ -424,6 +504,8 @@ class _EngineCore:
         """
         if self.pn == "eih":
             return eih_acceleration(R, V, self.masses, self.G, self.c, self.eps2)
+        if self.retardation == "lw":
+            return self._lw_field(R, V)
 
         if self.retardation == "none":
             A = newtonian_all_pairs(R, self.masses, self.G, self.eps2)
@@ -462,8 +544,10 @@ class _EngineCore:
         anderson = _Anderson(self.anderson_depth) if self.accelerator == "anderson" else None
         converged, used = False, 0
 
+        self._A_cur = None                                 # neutral models: source accel
         for used in range(1, iterations + 1):
             A = self.accelerations(R, V)
+            self._A_cur = A
             gR = base + apply_operator(self.K2, A)         # undamped Picard map G(R)
             V = v0 + apply_operator(self.C, A)             # self-consistent velocity
             if anderson is not None:
@@ -482,6 +566,7 @@ class _EngineCore:
 
         self._count_clamps(True)                           # judge only the fixed point
         A = self.accelerations(R, V)                       # clean final velocity
+        self._A_cur = A
         self._count_clamps(False)
         V = v0 + apply_operator(self.C, A)
         return R, V, history, residuals, converged, used
@@ -621,7 +706,7 @@ class PiecewiseVolterraStream(_EngineCore):
                  pn=None, anderson_depth=5, buffer_safety=2.5,
                  max_buffer_samples=None, tol=1e-9, adaptive=True, min_span_frac=0.05,
                  initial_A0=None, track_breaks=0,
-                 accuracy_tol=None):
+                 accuracy_tol=None, charges=None):
         retardation = retardation or ("aberration" if use_retardation else "none")
         pn = pn or ("eih" if use_pn else "none")
         super().__init__(G=G, c=c, softening=softening, relaxation=relaxation,
@@ -645,6 +730,9 @@ class PiecewiseVolterraStream(_EngineCore):
         self.adaptive = bool(adaptive)
         self.min_span_frac = float(min_span_frac)
         self.initial_A0 = initial_A0      # None -> ballistic initial history
+        self.charges = None if charges is None else np.asarray(charges, dtype=np.float64)
+        if self.retardation == "lw" and (self.charges is None or self.scheme != "chebyshev"):
+            raise ValueError("retardation='lw' needs charges=[...] and scheme='chebyshev'")
         # DDE breaking-point tracking: number of propagation levels to align
         # window ends with (0 = off). See research/NOTES.md, "breaking points".
         self.track_breaks = int(track_breaks)
@@ -721,7 +809,7 @@ class PiecewiseVolterraStream(_EngineCore):
         self.buffer_span = self._buffer_length(self.R_epoch)
 
     def _update_buffer(self, tg, R, V, new_epoch):
-        self.history.append(tg, R, V, self._bw)
+        self.history.append(tg, R, V, self._bw, A=getattr(self, "_A_cur", None))
         keep = self._buffer_length(R[-1])
         self.history.prune(new_epoch - keep)
         self.buffer_span = self.history.span()
@@ -855,11 +943,31 @@ class PiecewiseVolterraStream(_EngineCore):
                 if self._known_break(self.t_epoch + xi, i):
                     continue
                 if margin < xi < span - margin:
-                    roots.append((xi, lvl + 1, i))
+                    roots.append((xi, lvl + 1, i, j, d))
         if not roots:
             return None
         x0 = min(r[0] for r in roots)
-        return x0, sorted({(l, b) for x, l, b in roots if x - x0 < same})
+        first = min(roots, key=lambda r: r[0])
+        self._break_pair = (first[2], first[3], first[4])
+        return x0, sorted({(r[1], r[2]) for r in roots if r[0] - x0 < same})
+
+    def _refine_break_end(self, span):
+        """Newton step on g(t_end) = t_end - tau_ij(t_end) - d using the truncated
+        (smooth) window's own Chebyshev tau: the bisection root came from a window
+        that crossed the kink, so it is only ~1e-7 accurate. Returns a new span or
+        None if already exact."""
+        i, j, d = self._break_pair
+        tau = self._tau_cache.get((i, j))
+        if tau is None or self.scheme != "chebyshev":
+            return None
+        g = self.t_epoch + span - tau[-1] - d
+        if abs(g) <= 1e-14 * max(1.0, abs(d)):
+            return None
+        M = len(tau) - 1
+        from .operators import _cheb_value_to_coeff
+        Ct = _cheb_value_to_coeff(M)[0] @ tau
+        dtau = _cheb.chebval(1.0, _cheb.chebder(Ct)) * 2.0 / span
+        return span - g / (1.0 - dtau)
 
     def _trunc_err(self, V):
         # velocities, not positions: positions are one integral smoother, so their
@@ -916,6 +1024,14 @@ class PiecewiseVolterraStream(_EngineCore):
                 R, V, hist, res, converged, used = self._solve_span(span)
                 total += used
                 self.break_splits += 1
+            if new_break is not None:
+                for _ in range(3):                         # land exactly on the root
+                    new_span = self._refine_break_end(span)
+                    if new_span is None or not (0.0 < new_span < 1.5 * span):
+                        break
+                    span = new_span
+                    R, V, hist, res, converged, used = self._solve_span(span)
+                    total += used
             # a truncated window is shorter, so it normally converges; if not,
             # fall back to halving (the break then lies beyond this window end
             # and is re-detected by the next one)
