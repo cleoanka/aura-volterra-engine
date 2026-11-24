@@ -367,6 +367,21 @@ orbit spirals out at a rate ∝ β. Sanity check only (not a precision benchmark
 also seen at t0: the consistent `A0` tangential component 0.0884 vs `Ωτ/2` = 0.0884.
 Script: `research/exp_e6_laplace.py` (`results/e6_laplace.json`).
 
+**Aberration model, derived (E6 script, second part).** Same stationary-circle argument
+with `s = x_j(t−τ) + τ v_j(t−τ)`: tangential offset `r(sin θ − θ cos θ) ≈ rθ³/3`, so
+`dL/dt ≈ G m² θ³ / (6d)` — **β³**, not β. Exact (light-cone θ, full |s − x_i|³) vs
+engine early slope on `[3τ, 3τ + 0.2]`:
+
+| c | exact | θ³/6 | engine | rel. diff |
+|---|---|---|---|---|
+| 8 | 8.866e-4 | 9.101e-4 | 8.753e-4 | 1.27 % |
+| 16 | 1.140e-4 | 1.148e-4 | 1.137e-4 | 0.25 % |
+| 32 | 1.435e-5 | 1.438e-5 | 1.434e-5 | 0.06 % |
+| 64 | 1.797e-6 | 1.798e-6 | 1.797e-6 | 0.01 % |
+
+Difference → 0 like β² (orbit evolution). This also explains E9's c^−2.8 scaling.
+
+
 ### E9 — long-time behaviour, 20 orbits (`exp_e9_longtime.py`, `results/e9_longtime.json`)
 Binary, ballistic φ, tracking (L2 naive / L3 aberration) + `accuracy_tol=1e-12`, window
 P/4, M = 24. Secular rates = linear fit over the run; accuracy vs DelayDiffEq (Vern9 +
@@ -383,7 +398,7 @@ P/4, M = 24. Secular rates = linear fit over the run; accuracy vs DelayDiffEq (V
 - Aberration model: residual secular torque drops 49× for 4× larger c, i.e. ∝ c^−2.8 ≈
   **β³** — consistent with the expansion `x_j(t−τ) + τ v_j(t−τ) = x_j(t) − τ²a_j/2 +
   τ³ȧ_j/3 + …`: the τ² term is radial (no torque), the first tangential term is τ³ȧ.
-  (Scaling agreement, not a derivation — derive the β³ coefficient.)
+  (Coefficient derived and verified in E6: `dL/dt ≈ G m² θ³/(6d)`.)
 - Naive model: run-averaged rates are not representative (the orbit changes by O(1));
   its initial rate ∝ 1/c is verified in E6.
 - Framing consequence for the paper: the "aberration" model is *not* conservative,
@@ -449,7 +464,7 @@ Findings that contradict the v0.3.0 README (fix README before any public claim):
       clamps to the oldest node (2e-4 error with `buffer_safety=1.0`; 0 clamps at the
       default 2.5) — interpolate/extrapolate instead, or raise.
 - [x] Scaling with N: vectorised (E7). GPU/Colab only if the paper wants N ≥ 100.
-- [x] Long-time runs (E9). [ ] derive the β³ secular coefficient of the aberration model.
+- [x] Long-time runs (E9); β³ coefficient derived + verified (E6).
 - [ ] Verify every (?) citation in §1; read Hale 2024 and the 2023 constant-delay
       Chebyshev–Picard paper in full and state the delta precisely.
 - [ ] RADAR5 / ddesd comparison (optional; DelayDiffEq is the strongest open baseline).
