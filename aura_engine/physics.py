@@ -57,6 +57,7 @@ from .operators import (
     barycentric_weights_cgl,
     build_scheme,
 )
+from .history import BallisticHistory, SegmentHistory
 
 C_LIGHT = 2.99792458e8
 
@@ -300,6 +301,7 @@ class WindowResult:
     buffer_span: float
     converged: bool
     span: float
+    iterations: int = 0          # Picard/Anderson iterations (all attempts)
 
 
 # --------------------------------------------------------------------------- #
@@ -435,7 +437,7 @@ class VolterraSystem(_EngineCore):
     def __init__(self, bodies, *, G=6.67430e-11, c=C_LIGHT, softening=0.0,
                  t_span=1.0, n_samples=600, use_retardation=True, use_pn=False,
                  relaxation=0.6, scheme="chebyshev", accelerator="anderson",
-                 retardation=None, pn=None, anderson_depth=5):
+                 retardation=None, pn=None, anderson_depth=5, t0=0.0, history=None):
         retardation = retardation or ("aberration" if use_retardation else "none")
         pn = pn or ("eih" if use_pn else "none")
         super().__init__(G=G, c=c, softening=softening, relaxation=relaxation,
@@ -453,22 +455,25 @@ class VolterraSystem(_EngineCore):
         self.use_retardation = self.retardation != "none"
         self.use_pn = self.pn != "none"
 
-        self.t, self.C, self.K2 = build_scheme(self.scheme, 0.0, self.t_span, self.n)
+        self.t0 = float(t0)
+        self.t, self.C, self.K2 = build_scheme(self.scheme, self.t0, self.t0 + self.t_span, self.n)
         self._bw = barycentric_weights_cgl(self.n - 1) if self.scheme == "chebyshev" else None
+        # DDE initial history phi(t), t < t0 (free motion unless a past is given)
+        self.history = history if history is not None else BallisticHistory(self.R0, self.V0, self.t0)
 
-    # source lookup: inside window -> interpolate; before t0 -> ballistic past
+    # source lookup: inside window -> interpolate; before t0 -> history
     def _source_state(self, j, R, V, tq):
         rq, vq = self._in_window(R, V, j, tq)
         past = tq < self.t[0]
         if past.any():
-            rq = np.where(past[:, None],
-                          self.R0[j] + self.V0[j] * (tq - self.t[0])[:, None], rq)
-            vq = np.where(past[:, None], self.V0[j], vq)
+            rp, vp = self.history(j, tq[past])
+            rq[past] = rp
+            vq[past] = vp
         return rq, vq
 
     def predictor(self):
         """Taylor predictor r0 + v0 t + 1/2 a0 t^2 (a0 = instantaneous IC accel)."""
-        t = self.t[:, None, None]
+        t = (self.t - self.t0)[:, None, None]
         base = self.R0[None, :, :] + t * self.V0[None, :, :]
         a0 = newtonian_all_pairs(self.R0[None], self.masses, self.G, self.eps2)[0]
         return base + 0.5 * (t ** 2) * a0[None, :, :]
@@ -486,7 +491,7 @@ class VolterraSystem(_EngineCore):
                 _vector_drift(L, float(np.linalg.norm(L[0]))))
 
     def relax(self, iterations=40, *, record_history=True, tol=1e-9):
-        t_col = self.t[:, None, None]
+        t_col = (self.t - self.t0)[:, None, None]
         base = self.R0[None, :, :] + t_col * self.V0[None, :, :]
         R, V, history, residuals, converged, used = self._relax_window(
             base, self.predictor(), iterations, tol, record_history)
@@ -497,14 +502,14 @@ class VolterraSystem(_EngineCore):
             converged=converged, iterations=used)
 
     # -- segmented (chained) propagation ------------------------------------ #
-    def _child(self, R0, V0, t_span, n):
+    def _child(self, R0, V0, t_span, n, t0, history):
         bodies = [Body(b.name, b.mass, R0[k], V0[k], color=b.color, radius=b.radius)
                   for k, b in enumerate(self.bodies)]
         return VolterraSystem(bodies, G=self.G, c=self.c, softening=self.softening,
                               t_span=t_span, n_samples=n, relaxation=self.w,
                               scheme=self.scheme, accelerator=self.accelerator,
                               retardation=self.retardation, pn=self.pn,
-                              anderson_depth=self.anderson_depth)
+                              anderson_depth=self.anderson_depth, t0=t0, history=history)
 
     def propagate(self, iterations=40, *, n_segments=1, record_history=True, tol=1e-9):
         if n_segments <= 1:
@@ -513,12 +518,17 @@ class VolterraSystem(_EngineCore):
         seg_n = max(8, self.n // n_segments)
         R0, V0 = self.R0.copy(), self.V0.copy()
         t_parts, R_parts, V_parts, residuals = [], [], [], []
-        converged_all, t_off = True, 0.0
+        converged_all, t_off = True, self.t0
+        # the retarded past of segment k is the *converged* trajectory of the
+        # earlier segments (plus the initial history before t0) -- not a
+        # ballistic extrapolation from the segment's own epoch.
+        past = SegmentHistory(self.history)
         for s in range(n_segments):
-            r = self._child(R0, V0, seg_span, seg_n).relax(
-                iterations, record_history=False, tol=tol)
+            child = self._child(R0, V0, seg_span, seg_n, t_off, past)
+            r = child.relax(iterations, record_history=False, tol=tol)
+            past.append(r.t, r.trajectory, r.velocity, child._bw)
             start = 0 if s == 0 else 1
-            t_parts.append(r.t[start:] + t_off)
+            t_parts.append(r.t[start:])
             R_parts.append(r.trajectory[start:])
             V_parts.append(r.velocity[start:])
             residuals.append(r.residuals[-1] if r.residuals else float("nan"))
@@ -545,7 +555,8 @@ class PiecewiseVolterraStream(_EngineCore):
                  relaxation, window_span, window_samples, iterations,
                  scheme="chebyshev", accelerator="anderson", retardation=None,
                  pn=None, anderson_depth=5, buffer_safety=2.5,
-                 max_buffer_samples=256, tol=1e-9, adaptive=True, min_span_frac=0.05):
+                 max_buffer_samples=None, tol=1e-9, adaptive=True, min_span_frac=0.05,
+                 initial_A0=None, track_breaks=0):
         retardation = retardation or ("aberration" if use_retardation else "none")
         pn = pn or ("eih" if use_pn else "none")
         super().__init__(G=G, c=c, softening=softening, relaxation=relaxation,
@@ -563,11 +574,15 @@ class PiecewiseVolterraStream(_EngineCore):
         self.iterations = int(iterations)
         self.tol = float(tol)
         self.buffer_safety = float(buffer_safety)
-        self.max_buffer_samples = int(max_buffer_samples)
+        self.max_buffer_samples = max_buffer_samples  # unused (kept for API compat)
         self.use_retardation = self.retardation != "none"
         self.use_pn = self.pn != "none"
         self.adaptive = bool(adaptive)
         self.min_span_frac = float(min_span_frac)
+        self.initial_A0 = initial_A0      # None -> ballistic initial history
+        # DDE breaking-point tracking: number of propagation levels to align
+        # window ends with (0 = off). See research/NOTES.md, "breaking points".
+        self.track_breaks = int(track_breaks)
         self.reset()
 
     # -- operators for the current span (rebuilt when the span adapts) ------- #
@@ -583,6 +598,11 @@ class PiecewiseVolterraStream(_EngineCore):
         self.window_index = 0
         self._build_ops(self.window_span)
         self._seed_buffer()
+        # discontinuity set: (time, level). Level 0 = t0, where the solution's
+        # derivative jumps because the initial history phi is not the solution.
+        self.breaks = [(self.t_epoch, 0)]
+        self.break_splits = 0
+        self._tau_cache = {}
 
     @classmethod
     def from_config(cls, cfg, iterations, relaxation, use_retardation, use_pn,
@@ -617,45 +637,30 @@ class PiecewiseVolterraStream(_EngineCore):
         return maxd / self.c
 
     def _buffer_length(self, R_epoch):
-        span = max(self.buffer_safety * self._max_delay(R_epoch), 2.0 * self._span / self.m)
-        dt = self._span / self.m
-        nb = int(np.clip(round(span / dt) + 1, 8, self.max_buffer_samples))
-        return span, nb
+        """Retained past: ``buffer_safety * tau_max`` (at least one window)."""
+        return max(self.buffer_safety * self._max_delay(R_epoch), self._span)
 
     def _seed_buffer(self):
-        span, nb = self._buffer_length(self.R_epoch)
-        bt = np.linspace(self.t_epoch - span, self.t_epoch, nb)
-        self.buf_t = bt
-        self.buf_R = (self.R_epoch[None] + (bt - self.t_epoch)[:, None, None] * self.V_epoch[None])
-        self.buf_V = np.broadcast_to(self.V_epoch[None], self.buf_R.shape).copy()
-        self.buffer_span = span
+        # spectral segment history: converged windows kept as their own nodal data
+        self.history = SegmentHistory(BallisticHistory(self.R_epoch, self.V_epoch, self.t_epoch,
+                                                       A0=self.initial_A0))
+        self.buffer_span = self._buffer_length(self.R_epoch)
 
     def _update_buffer(self, tg, R, V, new_epoch):
-        span, nb = self._buffer_length(R[-1])
-        all_t = np.concatenate([self.buf_t, tg[1:]])
-        all_R = np.concatenate([self.buf_R, R[1:]])
-        all_V = np.concatenate([self.buf_V, V[1:]])
-        order = np.argsort(all_t)                          # CGL/window may interleave
-        all_t, all_R, all_V = all_t[order], all_R[order], all_V[order]
-        lo = new_epoch - span
-        new_t = np.linspace(lo, new_epoch, nb)
-        new_R = np.empty((nb, self.N, 3)); new_V = np.empty((nb, self.N, 3))
-        for i in range(self.N):
-            for d in range(3):
-                new_R[:, i, d] = np.interp(new_t, all_t, all_R[:, i, d])
-                new_V[:, i, d] = np.interp(new_t, all_t, all_V[:, i, d])
-        self.buf_t, self.buf_R, self.buf_V, self.buffer_span = new_t, new_R, new_V, span
+        self.history.append(tg, R, V, self._bw)
+        keep = self._buffer_length(R[-1])
+        self.history.prune(new_epoch - keep)
+        self.buffer_span = self.history.span()
 
-    # source lookup: inside window -> interpolate; before epoch -> buffer (Hermite)
+    # source lookup: inside window -> interpolate; before epoch -> history
     def _source_state(self, j, R, V, tq):
         tg = self.t_epoch + self.t
         rq, vq = self._in_window_global(R, V, j, tq, tg)
         past = tq < self.t_epoch
         if past.any():
-            rb = hermite_interpolate(self.buf_t, self.buf_R[:, j, :], self.buf_V[:, j, :], tq)
-            vb = linear_interpolate(self.buf_t, self.buf_V[:, j, :], tq)
-            rq = np.where(past[:, None], rb, rq)
-            vq = np.where(past[:, None], vb, vq)
+            rp, vp = self.history(j, tq[past])
+            rq[past] = rp
+            vq[past] = vp
         return rq, vq
 
     def _in_window_global(self, R, V, j, tq, tg):
@@ -681,12 +686,14 @@ class PiecewiseVolterraStream(_EngineCore):
             ndir = rel / dist[:, None]
             dgdtau = 1.0 - np.einsum("kd,kd->k", ndir, vj) / self.c
             tau = np.clip(tau - g / np.where(np.abs(dgdtau) < 1e-6, 1.0, dgdtau), 0.0, None)
+        self._tau_cache[(i, j)] = tau
         rj, vj = self._source_state(j, R, V, tg - tau)
         if self.retardation == "aberration":
             rj = rj + tau[:, None] * vj
         return rj
 
     def _solve_span(self, span, record_history=False):
+        self._tau_cache = {}
         if span != self._span:
             self._build_ops(span)
         t_local = self.t
@@ -695,14 +702,91 @@ class PiecewiseVolterraStream(_EngineCore):
         predictor = base + 0.5 * (t_local[:, None, None] ** 2) * a0[None]
         return self._relax_window(base, predictor, self.iterations, self.tol, record_history)
 
+    def _first_break(self):
+        """Earliest breaking point strictly inside the just-solved window.
+
+        A derivative jump at time ``d`` reaches body ``i`` through pair ``(i, j)``
+        when ``t - tau_ij(t) = d``. ``g(t) = t - tau_ij(t)`` is increasing
+        (``g' = 1 - tau' > 0`` for ``|v| < c``), so a sign change of ``g - d``
+        over the window's nodes brackets a unique root, refined by bisection on
+        the window's own (barycentric / linear) interpolant of ``tau``.
+        Returns ``(xi_local, level)`` or ``None``.
+        """
+        if not self._tau_cache or self.track_breaks <= 0:
+            return None
+        tg = self.t_epoch + self.t
+        span = self._span
+        margin = 1e-6 * span
+        # a root this close to a break that is already registered is that same
+        # break (the truncated re-solve can leave the window end a hair short of
+        # it); splitting again would cut a sliver window and duplicate the chain
+        same = self._break_tol()
+        best = None
+        for (i, j), tau in self._tau_cache.items():
+            g = tg - tau
+            for d, lvl in self.breaks:
+                if lvl >= self.track_breaks:
+                    continue
+                h = g - d
+                if not (h[0] < 0.0 < h[-1]):
+                    continue
+                k = int(np.argmax(h > 0.0))
+                lo, hi = self.t[k - 1], self.t[k]
+
+                def hval(tl):
+                    if self.scheme == "chebyshev":
+                        tq = barycentric_interpolate(self.t, tau, self._bw, np.array([tl]))[0]
+                    else:
+                        tq = float(np.interp(tl, self.t, tau))
+                    return self.t_epoch + tl - tq - d
+                for _ in range(60):
+                    mid = 0.5 * (lo + hi)
+                    if hval(mid) > 0.0:
+                        hi = mid
+                    else:
+                        lo = mid
+                xi = 0.5 * (lo + hi)
+                if any(abs(self.t_epoch + xi - d2) < same for d2, _ in self.breaks):
+                    continue
+                if margin < xi < span - margin and (best is None or xi < best[0]):
+                    best = (xi, lvl + 1)
+        return best
+
+    def _break_tol(self):
+        return 1e-4 * self.window_span
+
+    def _add_break(self, t_break, level):
+        tol = self._break_tol()
+        if not any(abs(t_break - d) < tol for d, _ in self.breaks):
+            self.breaks.append((t_break, level))
+        # a jump at d can only be reached while t - tau_max <= d
+        horizon = t_break - 2.0 * self.buffer_safety * self._max_delay(self.R_epoch) - self._span
+        self.breaks = [(d, l) for d, l in self.breaks if d >= horizon]
+
     def step(self) -> WindowResult:
         """Relax the next window (adaptively shrinking on non-convergence)."""
         span = self.window_span
         min_span = self.window_span * self.min_span_frac
         R, V, hist, res, converged, used = self._solve_span(span)
+        total = used
         while self.adaptive and not converged and span > min_span:
             span *= 0.5
             R, V, hist, res, converged, used = self._solve_span(span)
+            total += used
+        # align the window end with the earliest breaking point inside it (the
+        # root moves slightly with the truncated solve: repeat to self-consistency)
+        new_break = None
+        if self.track_breaks > 0 and self.retardation != "none":
+            for _ in range(4):
+                fb = self._first_break()
+                if fb is None:
+                    break
+                span, lvl = fb
+                new_break = lvl
+                R, V, hist, res, converged, used = self._solve_span(span)
+                total += used
+                self.break_splits += 1
+        self.residual_history = res
 
         tg = self.t_epoch + self.t
         e = newtonian_energy(self.masses, R, V, self.G, self.eps2)
@@ -711,9 +795,12 @@ class PiecewiseVolterraStream(_EngineCore):
             index=self.window_index, t=tg.copy(), trajectory=R.copy(), velocity=V.copy(),
             residual=res[-1] if res else float("nan"), energy_drift=_scalar_drift(e),
             momentum_drift=_vector_drift(linear_momentum(self.masses, V), vscale),
-            buffer_span=self.buffer_span, converged=converged, span=span)
+            buffer_span=self.buffer_span, converged=converged, span=span,
+            iterations=total)
 
         new_epoch = self.t_epoch + span
+        if new_break is not None:
+            self._add_break(new_epoch, new_break)
         self._update_buffer(tg, R, V, new_epoch)
         self.R_epoch, self.V_epoch = R[-1].copy(), V[-1].copy()
         self.t_epoch = new_epoch

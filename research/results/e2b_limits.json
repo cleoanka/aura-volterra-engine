@@ -1,0 +1,402 @@
+[
+ {
+  "problem": "binary",
+  "W": 8.885765876316732,
+  "W_units": 2.0,
+  "nodes": 175,
+  "accel": "picard",
+  "w": 1.0,
+  "converged": true,
+  "iters": 16
+ },
+ {
+  "problem": "binary",
+  "W": 8.885765876316732,
+  "W_units": 2.0,
+  "nodes": 175,
+  "accel": "picard",
+  "w": 0.6,
+  "converged": true,
+  "iters": 48
+ },
+ {
+  "problem": "binary",
+  "W": 8.885765876316732,
+  "W_units": 2.0,
+  "nodes": 175,
+  "accel": "anderson",
+  "w": 1.0,
+  "converged": true,
+  "iters": 25
+ },
+ {
+  "problem": "binary",
+  "W": 8.885765876316732,
+  "W_units": 2.0,
+  "nodes": 175,
+  "accel": "anderson",
+  "w": 0.6,
+  "converged": true,
+  "iters": 27
+ },
+ {
+  "problem": "binary",
+  "W": 13.328648814475098,
+  "W_units": 3.0,
+  "nodes": 263,
+  "accel": "picard",
+  "w": 1.0,
+  "converged": true,
+  "iters": 18
+ },
+ {
+  "problem": "binary",
+  "W": 13.328648814475098,
+  "W_units": 3.0,
+  "nodes": 263,
+  "accel": "picard",
+  "w": 0.6,
+  "converged": true,
+  "iters": 53
+ },
+ {
+  "problem": "binary",
+  "W": 13.328648814475098,
+  "W_units": 3.0,
+  "nodes": 263,
+  "accel": "anderson",
+  "w": 1.0,
+  "converged": true,
+  "iters": 37
+ },
+ {
+  "problem": "binary",
+  "W": 13.328648814475098,
+  "W_units": 3.0,
+  "nodes": 263,
+  "accel": "anderson",
+  "w": 0.6,
+  "converged": true,
+  "iters": 33
+ },
+ {
+  "problem": "binary",
+  "W": 17.771531752633464,
+  "W_units": 4.0,
+  "nodes": 351,
+  "accel": "picard",
+  "w": 1.0,
+  "converged": true,
+  "iters": 21
+ },
+ {
+  "problem": "binary",
+  "W": 17.771531752633464,
+  "W_units": 4.0,
+  "nodes": 351,
+  "accel": "picard",
+  "w": 0.6,
+  "converged": true,
+  "iters": 59
+ },
+ {
+  "problem": "binary",
+  "W": 17.771531752633464,
+  "W_units": 4.0,
+  "nodes": 351,
+  "accel": "anderson",
+  "w": 1.0,
+  "converged": true,
+  "iters": 43
+ },
+ {
+  "problem": "binary",
+  "W": 17.771531752633464,
+  "W_units": 4.0,
+  "nodes": 351,
+  "accel": "anderson",
+  "w": 0.6,
+  "converged": true,
+  "iters": 46
+ },
+ {
+  "problem": "binary",
+  "W": 26.657297628950197,
+  "W_units": 6.0,
+  "nodes": 527,
+  "accel": "picard",
+  "w": 1.0,
+  "converged": true,
+  "iters": 24
+ },
+ {
+  "problem": "binary",
+  "W": 26.657297628950197,
+  "W_units": 6.0,
+  "nodes": 527,
+  "accel": "picard",
+  "w": 0.6,
+  "converged": true,
+  "iters": 66
+ },
+ {
+  "problem": "binary",
+  "W": 26.657297628950197,
+  "W_units": 6.0,
+  "nodes": 527,
+  "accel": "anderson",
+  "w": 1.0,
+  "converged": true,
+  "iters": 62
+ },
+ {
+  "problem": "binary",
+  "W": 26.657297628950197,
+  "W_units": 6.0,
+  "nodes": 527,
+  "accel": "anderson",
+  "w": 0.6,
+  "converged": true,
+  "iters": 64
+ },
+ {
+  "problem": "triple",
+  "W": 0.25,
+  "W_units": 0.25,
+  "nodes": 24,
+  "accel": "picard",
+  "w": 1.0,
+  "converged": true,
+  "iters": 4
+ },
+ {
+  "problem": "triple",
+  "W": 0.25,
+  "W_units": 0.25,
+  "nodes": 24,
+  "accel": "picard",
+  "w": 0.6,
+  "converged": true,
+  "iters": 20
+ },
+ {
+  "problem": "triple",
+  "W": 0.25,
+  "W_units": 0.25,
+  "nodes": 24,
+  "accel": "anderson",
+  "w": 1.0,
+  "converged": true,
+  "iters": 4
+ },
+ {
+  "problem": "triple",
+  "W": 0.25,
+  "W_units": 0.25,
+  "nodes": 24,
+  "accel": "anderson",
+  "w": 0.6,
+  "converged": true,
+  "iters": 4
+ },
+ {
+  "problem": "triple",
+  "W": 0.5,
+  "W_units": 0.5,
+  "nodes": 24,
+  "accel": "picard",
+  "w": 1.0,
+  "converged": true,
+  "iters": 4
+ },
+ {
+  "problem": "triple",
+  "W": 0.5,
+  "W_units": 0.5,
+  "nodes": 24,
+  "accel": "picard",
+  "w": 0.6,
+  "converged": true,
+  "iters": 23
+ },
+ {
+  "problem": "triple",
+  "W": 0.5,
+  "W_units": 0.5,
+  "nodes": 24,
+  "accel": "anderson",
+  "w": 1.0,
+  "converged": true,
+  "iters": 5
+ },
+ {
+  "problem": "triple",
+  "W": 0.5,
+  "W_units": 0.5,
+  "nodes": 24,
+  "accel": "anderson",
+  "w": 0.6,
+  "converged": true,
+  "iters": 5
+ },
+ {
+  "problem": "triple",
+  "W": 1.0,
+  "W_units": 1.0,
+  "nodes": 40,
+  "accel": "picard",
+  "w": 1.0,
+  "converged": true,
+  "iters": 6
+ },
+ {
+  "problem": "triple",
+  "W": 1.0,
+  "W_units": 1.0,
+  "nodes": 40,
+  "accel": "picard",
+  "w": 0.6,
+  "converged": true,
+  "iters": 26
+ },
+ {
+  "problem": "triple",
+  "W": 1.0,
+  "W_units": 1.0,
+  "nodes": 40,
+  "accel": "anderson",
+  "w": 1.0,
+  "converged": true,
+  "iters": 6
+ },
+ {
+  "problem": "triple",
+  "W": 1.0,
+  "W_units": 1.0,
+  "nodes": 40,
+  "accel": "anderson",
+  "w": 0.6,
+  "converged": true,
+  "iters": 6
+ },
+ {
+  "problem": "triple",
+  "W": 2.0,
+  "W_units": 2.0,
+  "nodes": 80,
+  "accel": "picard",
+  "w": 1.0,
+  "converged": true,
+  "iters": 8
+ },
+ {
+  "problem": "triple",
+  "W": 2.0,
+  "W_units": 2.0,
+  "nodes": 80,
+  "accel": "picard",
+  "w": 0.6,
+  "converged": true,
+  "iters": 31
+ },
+ {
+  "problem": "triple",
+  "W": 2.0,
+  "W_units": 2.0,
+  "nodes": 80,
+  "accel": "anderson",
+  "w": 1.0,
+  "converged": true,
+  "iters": 8
+ },
+ {
+  "problem": "triple",
+  "W": 2.0,
+  "W_units": 2.0,
+  "nodes": 80,
+  "accel": "anderson",
+  "w": 0.6,
+  "converged": true,
+  "iters": 9
+ },
+ {
+  "problem": "triple",
+  "W": 3.0,
+  "W_units": 3.0,
+  "nodes": 120,
+  "accel": "picard",
+  "w": 1.0,
+  "converged": true,
+  "iters": 10
+ },
+ {
+  "problem": "triple",
+  "W": 3.0,
+  "W_units": 3.0,
+  "nodes": 120,
+  "accel": "picard",
+  "w": 0.6,
+  "converged": true,
+  "iters": 36
+ },
+ {
+  "problem": "triple",
+  "W": 3.0,
+  "W_units": 3.0,
+  "nodes": 120,
+  "accel": "anderson",
+  "w": 1.0,
+  "converged": true,
+  "iters": 11
+ },
+ {
+  "problem": "triple",
+  "W": 3.0,
+  "W_units": 3.0,
+  "nodes": 120,
+  "accel": "anderson",
+  "w": 0.6,
+  "converged": true,
+  "iters": 11
+ },
+ {
+  "problem": "triple",
+  "W": 4.0,
+  "W_units": 4.0,
+  "nodes": 160,
+  "accel": "picard",
+  "w": 1.0,
+  "converged": true,
+  "iters": 12
+ },
+ {
+  "problem": "triple",
+  "W": 4.0,
+  "W_units": 4.0,
+  "nodes": 160,
+  "accel": "picard",
+  "w": 0.6,
+  "converged": true,
+  "iters": 40
+ },
+ {
+  "problem": "triple",
+  "W": 4.0,
+  "W_units": 4.0,
+  "nodes": 160,
+  "accel": "anderson",
+  "w": 1.0,
+  "converged": true,
+  "iters": 16
+ },
+ {
+  "problem": "triple",
+  "W": 4.0,
+  "W_units": 4.0,
+  "nodes": 160,
+  "accel": "anderson",
+  "w": 0.6,
+  "converged": true,
+  "iters": 16
+ }
+]

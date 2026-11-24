@@ -153,7 +153,7 @@ window has relaxed:
 1. **Anchor.** Freeze the final vector $\big(\mathbf r(T_{k+1}),\, \mathbf v(T_{k+1})\big)$ as the new epoch — the initial condition for $W_{k+1}$.
 2. **Slide the buffer.** Keep only the trailing slice of length
    $$ \Delta_\text{buf} \;=\; \eta \,\tau_{\max} \;=\; \eta\,\frac{\max_{i,j}\lVert \mathbf r_i - \mathbf r_j\rVert}{c}, \qquad \eta \approx 2.5 , $$
-   i.e. exactly the light‑crossing history the next window's retarded potentials can reach ($c\,\tau_{\max}$ of past), resampled onto a fixed grid.
+   i.e. exactly the light‑crossing history the next window's retarded potentials can reach ($c\,\tau_{\max}$ of past). Each converged window is kept as its own Chebyshev nodal data and read back by barycentric interpolation (`aura_engine/history.py`), so retarded lookups into the past are as accurate as the solve itself.
 3. **Discard.** Everything older than $\Delta_\text{buf}$ is dropped. The window itself is emitted to the renderer and released.
 
 ```
@@ -248,8 +248,10 @@ correct **prograde** perihelion advance for comparable masses:
 ### 4 · Anderson‑accelerated Picard — `accelerator="anderson"` (default)
 
 A least‑squares mix of recent residuals replaces hand‑tuned damping. On the inner
-Solar System it converges in **32 iterations vs 54** for damped Picard, *and* to a
-tighter residual.
+Solar System it converges in **32 iterations vs 54** for *damped* (w = 0.6) Picard.
+Note: *undamped* Picard (w = 1) is faster still on the tested problems — the Volterra
+Picard map converges superlinearly, which damping and Anderson mixing slow down
+(see `research/NOTES.md`, E2/E2b).
 
 ### 5 · Conservation diagnostics + self‑consistent velocities
 
@@ -277,7 +279,7 @@ This repo does **not** hand‑wave. Every row is checked in `tests/test_physics.
 | **Aberration** vs **naive** retardation (chaos) | E `8.6e‑3` vs `0.92`; L `2.1e‑3` vs `0.41` |
 | **EIH** circular orbit | stable, drift `~1e‑6` |
 | **EIH** eccentric orbit | **prograde** precession, momentum drift `< 1e‑2` |
-| Anderson vs damped Picard (solar) | **32 vs 54** iterations |
+| Anderson vs damped (w=0.6) Picard (solar) | **32 vs 54** iterations (undamped Picard is faster: research/NOTES.md) |
 | **Continuous stream** window joins | `C⁰` continuity, gap `< 1e‑9` |
 | **Continuous stream** memory over 25+ windows | bounded (delay buffer never grows) |
 | **Continuous stream** momentum (aberration) | drift `< 1e‑6` |
@@ -415,9 +417,15 @@ for window in stream:                 # never terminates; RAM stays O(1)
 
 ## Limitations & future work
 
-- **Delay‑buffer assumption.** Continuous Mode assumes the longest light delay is
-  shorter than one window (`Δ_buf ≤ W`); true for all presets. Delays longer than the
-  retained buffer are clamped to its oldest sample.
+- **Delay history.** The retained past spans `η·τ_max` (at least one window). A lookup
+  older than the retained past is clamped to its oldest sample and counted in
+  `stream.history.clamped` (0 for all presets and research problems).
+- **Initial history & breaking points.** Retarded runs need a history `φ(t)` before
+  `t0` (default: free motion). Its derivative jump propagates along `t − τ_ij(t) = t0`
+  and caps the spectral accuracy at ~1e-6…1e-9 unless the stream is built with
+  `track_breaks=2` (naive) / `3` (aberration), which aligns window ends with those
+  points and restores ~1e-15 agreement with a 128-bit DelayDiffEq.jl reference
+  (`research/NOTES.md`, E5).
 - **Retardation is linearised.** The aberration‑corrected model is `O(v/c)` correct,
   not full numerical relativity; the EIH term is 1PN (no 2PN / spin / radiation).
 - **Softening vs. regularisation.** A Plummer softening length regularises close

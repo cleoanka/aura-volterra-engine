@@ -1,0 +1,180 @@
+binary-naive       DDE-Vern9 tol=1e-06 err= 7.6e-07 nf=    658 wall=0.064s
+binary-naive       DDE-Vern9 tol=1e-08 err= 1.2e-08 nf=    978 wall=0.079s
+binary-naive       DDE-Vern9 tol=1e-10 err= 1.6e-08 nf=   1330 wall=0.078s
+binary-naive       DDE-Vern9 tol=1e-12 err= 6.7e-12 nf=   1330 wall=0.080s
+binary-naive       DDE-Vern9 tol=1e-14 err= 1.5e-13 nf=   1698 wall=0.085s
+binary-naive       DDE-Vern7 tol=1e-06 err= 5.4e-06 nf=    582 wall=0.059s
+binary-naive       DDE-Vern7 tol=1e-08 err= 1.4e-07 nf=    702 wall=0.058s
+binary-naive       DDE-Vern7 tol=1e-10 err= 3.1e-09 nf=    722 wall=0.061s
+binary-naive       DDE-Vern7 tol=1e-12 err= 8.7e-13 nf=   1162 wall=0.077s
+binary-naive       DDE-Vern7 tol=1e-14 err= 3.2e-14 nf=   2232 wall=0.078s
+binary-naive       DDE-Tsit5 tol=1e-06 err= 2.6e-07 nf=    489 wall=0.060s
+binary-naive       DDE-Tsit5 tol=1e-08 err= 4.6e-08 nf=    423 wall=0.056s
+binary-naive       DDE-Tsit5 tol=1e-10 err= 1.3e-08 nf=   1011 wall=0.076s
+binary-naive       DDE-Tsit5 tol=1e-12 err= 1.3e-10 nf=   2373 wall=0.088s
+binary-naive       DDE-Tsit5 tol=1e-14 err= 7.2e-13 nf=   5727 wall=0.090s
+binary-naive       WR W=T/4  M=12 ptol=1e-08 err= 4.5e-07 rhs=   576 wall=0.032s
+binary-naive       WR W=T/4  M=12 ptol=1e-11 err= 4.5e-07 rhs=   720 wall=0.035s
+binary-naive       WR W=T/4  M=12 ptol=1e-14 err= 4.5e-07 rhs=   888 wall=0.039s
+binary-naive       WR W=T/4  M=16 ptol=1e-08 err= 1.3e-09 rhs=   720 wall=0.029s
+binary-naive       WR W=T/4  M=16 ptol=1e-11 err= 3.5e-09 rhs=   896 wall=0.033s
+binary-naive       WR W=T/4  M=16 ptol=1e-14 err= 3.5e-09 rhs=  1072 wall=0.039s
+binary-naive       WR W=T/4  M=24 ptol=1e-08 err= 2.1e-09 rhs=  1152 wall=0.035s
+binary-naive       WR W=T/4  M=24 ptol=1e-11 err= 1.2e-12 rhs=  1440 wall=0.039s
+binary-naive       WR W=T/4  M=24 ptol=1e-14 err= 1.7e-12 rhs=  1728 wall=0.045s
+binary-naive       WR W=T/4  M=32 ptol=1e-08 err= 2.1e-09 rhs=  1536 wall=0.040s
+binary-naive       WR W=T/4  M=32 ptol=1e-11 err= 3.2e-13 rhs=  1920 wall=0.046s
+binary-naive       WR W=T/4  M=32 ptol=1e-14 err= 1.8e-13 rhs=  2304 wall=0.051s
+binary-naive       WR W=T/4  M=48 ptol=1e-08 err= 2.1e-09 rhs=  2160 wall=0.048s
+binary-naive       WR W=T/4  M=48 ptol=1e-11 err= 5.6e-13 rhs=  2688 wall=0.054s
+binary-naive       WR W=T/4  M=48 ptol=1e-14 err= 6.7e-14 rhs=  3216 wall=0.061s
+binary-naive       WR W=T/8  M=12 ptol=1e-08 err= 2.8e-09 rhs=   612 wall=0.033s
+binary-naive       WR W=T/8  M=12 ptol=1e-11 err= 7.5e-10 rhs=   828 wall=0.041s
+binary-naive       WR W=T/8  M=12 ptol=1e-14 err= 7.5e-10 rhs=   972 wall=0.046s
+binary-naive       WR W=T/8  M=16 ptol=1e-08 err= 2.0e-09 rhs=   816 wall=0.033s
+binary-naive       WR W=T/8  M=16 ptol=1e-11 err= 1.2e-12 rhs=  1104 wall=0.052s
+binary-naive       WR W=T/8  M=16 ptol=1e-14 err= 1.1e-12 rhs=  1296 wall=0.053s
+binary-naive       WR W=T/8  M=24 ptol=1e-08 err= 2.0e-09 rhs=  1224 wall=0.046s
+binary-naive       WR W=T/8  M=24 ptol=1e-11 err= 2.2e-13 rhs=  1656 wall=0.066s
+binary-naive       WR W=T/8  M=24 ptol=1e-14 err= 8.6e-14 rhs=  1944 wall=0.068s
+binary-naive       WR W=T/8  M=32 ptol=1e-08 err= 2.0e-09 rhs=  1728 wall=0.116s
+binary-naive       WR W=T/8  M=32 ptol=1e-11 err= 1.1e-13 rhs=  2336 wall=0.093s
+binary-naive       WR W=T/8  M=32 ptol=1e-14 err= 2.8e-14 rhs=  2752 wall=0.093s
+binary-naive       WR W=T/8  M=48 ptol=1e-08 err= 2.0e-09 rhs=  2448 wall=0.080s
+binary-naive       WR W=T/8  M=48 ptol=1e-11 err= 1.5e-13 rhs=  3312 wall=0.113s
+binary-naive       WR W=T/8  M=48 ptol=1e-14 err= 2.4e-14 rhs=  3888 wall=0.091s
+binary-naive       WR W=T/16 M=12 ptol=1e-08 err= 1.7e-09 rhs=   840 wall=0.079s
+binary-naive       WR W=T/16 M=12 ptol=1e-11 err= 7.0e-13 rhs=  1104 wall=0.072s
+binary-naive       WR W=T/16 M=12 ptol=1e-14 err= 9.0e-13 rhs=  1344 wall=0.081s
+binary-naive       WR W=T/16 M=16 ptol=1e-08 err= 1.7e-09 rhs=  1168 wall=0.053s
+binary-naive       WR W=T/16 M=16 ptol=1e-11 err= 8.7e-14 rhs=  1536 wall=0.065s
+binary-naive       WR W=T/16 M=16 ptol=1e-14 err= 1.2e-13 rhs=  1872 wall=0.083s
+binary-naive       WR W=T/16 M=24 ptol=1e-08 err= 1.7e-09 rhs=  1680 wall=0.058s
+binary-naive       WR W=T/16 M=24 ptol=1e-11 err= 9.2e-13 rhs=  2184 wall=0.070s
+binary-naive       WR W=T/16 M=24 ptol=1e-14 err= 3.8e-15 rhs=  2688 wall=0.082s
+binary-naive       WR W=T/16 M=32 ptol=1e-08 err= 1.7e-09 rhs=  2336 wall=0.068s
+binary-naive       WR W=T/16 M=32 ptol=1e-11 err= 9.1e-13 rhs=  3040 wall=0.080s
+binary-naive       WR W=T/16 M=32 ptol=1e-14 err= 5.3e-15 rhs=  3744 wall=0.096s
+binary-naive       WR W=T/16 M=48 ptol=1e-08 err= 1.7e-09 rhs=  3504 wall=0.087s
+binary-naive       WR W=T/16 M=48 ptol=1e-11 err= 9.3e-13 rhs=  4560 wall=0.099s
+binary-naive       WR W=T/16 M=48 ptol=1e-14 err= 8.7e-15 rhs=  5616 wall=0.114s
+binary-aberration  DDE-Vern9 tol=1e-06 err= 2.4e-06 nf=    978 wall=0.066s
+binary-aberration  DDE-Vern9 tol=1e-08 err= 3.1e-08 nf=   1650 wall=0.079s
+binary-aberration  DDE-Vern9 tol=1e-10 err= 6.8e-09 nf=   2338 wall=0.086s
+binary-aberration  DDE-Vern9 tol=1e-12 err= 3.4e-12 nf=   3378 wall=0.095s
+binary-aberration  DDE-Vern9 tol=1e-14 err= 5.6e-13 nf=   3362 wall=0.103s
+binary-aberration  DDE-Vern7 tol=1e-06 err= 1.7e-05 nf=    872 wall=0.065s
+binary-aberration  DDE-Vern7 tol=1e-08 err= 6.8e-07 nf=   1462 wall=0.083s
+binary-aberration  DDE-Vern7 tol=1e-10 err= 1.2e-08 nf=   1142 wall=0.085s
+binary-aberration  DDE-Vern7 tol=1e-12 err= 6.5e-11 nf=   2212 wall=0.091s
+binary-aberration  DDE-Vern7 tol=1e-14 err= 1.6e-12 nf=   3952 wall=0.111s
+binary-aberration  DDE-Tsit5 tol=1e-06 err= 1.7e-05 nf=    933 wall=0.057s
+binary-aberration  DDE-Tsit5 tol=1e-08 err= 1.7e-06 nf=    837 wall=0.077s
+binary-aberration  DDE-Tsit5 tol=1e-10 err= 7.3e-09 nf=   2127 wall=0.080s
+binary-aberration  DDE-Tsit5 tol=1e-12 err= 1.7e-10 nf=   5115 wall=0.117s
+binary-aberration  DDE-Tsit5 tol=1e-14 err= 9.4e-13 nf=  12531 wall=0.153s
+binary-aberration  WR W=T/4  M=12 ptol=1e-08 err= 2.3e-08 rhs=   972 wall=0.051s
+binary-aberration  WR W=T/4  M=12 ptol=1e-11 err= 4.4e-09 rhs=  1260 wall=0.063s
+binary-aberration  WR W=T/4  M=12 ptol=1e-14 err= 4.4e-09 rhs=  1560 wall=0.073s
+binary-aberration  WR W=T/4  M=16 ptol=1e-08 err= 1.2e-08 rhs=  1296 wall=0.056s
+binary-aberration  WR W=T/4  M=16 ptol=1e-11 err= 2.0e-09 rhs=  1584 wall=0.067s
+binary-aberration  WR W=T/4  M=16 ptol=1e-14 err= 2.0e-09 rhs=  1856 wall=0.076s
+binary-aberration  WR W=T/4  M=24 ptol=1e-08 err= 1.4e-08 rhs=  1944 wall=0.058s
+binary-aberration  WR W=T/4  M=24 ptol=1e-11 err= 2.6e-12 rhs=  2376 wall=0.065s
+binary-aberration  WR W=T/4  M=24 ptol=1e-14 err= 1.7e-12 rhs=  2784 wall=0.076s
+binary-aberration  WR W=T/4  M=32 ptol=1e-08 err= 1.4e-08 rhs=  2592 wall=0.065s
+binary-aberration  WR W=T/4  M=32 ptol=1e-11 err= 3.7e-12 rhs=  3168 wall=0.076s
+binary-aberration  WR W=T/4  M=32 ptol=1e-14 err= 3.9e-13 rhs=  3712 wall=0.083s
+binary-aberration  WR W=T/4  M=48 ptol=1e-08 err= 1.4e-08 rhs=  3744 wall=0.079s
+binary-aberration  WR W=T/4  M=48 ptol=1e-11 err= 1.9e-11 rhs=  4560 wall=0.087s
+binary-aberration  WR W=T/4  M=48 ptol=1e-14 err= 2.3e-11 rhs=  5328 wall=0.098s
+binary-aberration  WR W=T/8  M=12 ptol=1e-08 err= 1.7e-09 rhs=  1056 wall=0.055s
+binary-aberration  WR W=T/8  M=12 ptol=1e-11 err= 1.7e-09 rhs=  1356 wall=0.066s
+binary-aberration  WR W=T/8  M=12 ptol=1e-14 err= 1.7e-09 rhs=  1536 wall=0.075s
+binary-aberration  WR W=T/8  M=16 ptol=1e-08 err= 2.1e-09 rhs=  1360 wall=0.076s
+binary-aberration  WR W=T/8  M=16 ptol=1e-11 err= 1.1e-09 rhs=  1744 wall=0.074s
+binary-aberration  WR W=T/8  M=16 ptol=1e-14 err= 1.1e-09 rhs=  1968 wall=0.074s
+binary-aberration  WR W=T/8  M=24 ptol=1e-08 err= 3.0e-09 rhs=  2040 wall=0.059s
+binary-aberration  WR W=T/8  M=24 ptol=1e-11 err= 2.8e-12 rhs=  2568 wall=0.071s
+binary-aberration  WR W=T/8  M=24 ptol=1e-14 err= 3.3e-12 rhs=  2952 wall=0.075s
+binary-aberration  WR W=T/8  M=32 ptol=1e-08 err= 3.2e-09 rhs=  2816 wall=0.072s
+binary-aberration  WR W=T/8  M=32 ptol=1e-11 err= 8.5e-13 rhs=  3552 wall=0.088s
+binary-aberration  WR W=T/8  M=32 ptol=1e-14 err= 9.6e-14 rhs=  4096 wall=0.092s
+binary-aberration  WR W=T/8  M=48 ptol=1e-08 err= 3.2e-09 rhs=  4080 wall=0.085s
+binary-aberration  WR W=T/8  M=48 ptol=1e-11 err= 1.1e-11 rhs=  5136 wall=0.097s
+binary-aberration  WR W=T/8  M=48 ptol=1e-14 err= 1.2e-11 rhs=  5904 wall=0.107s
+binary-aberration  WR W=T/16 M=12 ptol=1e-08 err= 1.6e-09 rhs=  1224 wall=0.062s
+binary-aberration  WR W=T/16 M=12 ptol=1e-11 err= 2.6e-10 rhs=  1500 wall=0.073s
+binary-aberration  WR W=T/16 M=12 ptol=1e-14 err= 2.6e-10 rhs=  1872 wall=0.085s
+binary-aberration  WR W=T/16 M=16 ptol=1e-08 err= 1.7e-09 rhs=  1680 wall=0.069s
+binary-aberration  WR W=T/16 M=16 ptol=1e-11 err= 3.1e-12 rhs=  2048 wall=0.079s
+binary-aberration  WR W=T/16 M=16 ptol=1e-14 err= 3.1e-13 rhs=  2544 wall=0.093s
+binary-aberration  WR W=T/16 M=24 ptol=1e-08 err= 1.6e-09 rhs=  2448 wall=0.078s
+binary-aberration  WR W=T/16 M=24 ptol=1e-11 err= 9.1e-11 rhs=  2976 wall=0.082s
+binary-aberration  WR W=T/16 M=24 ptol=1e-14 err= 9.5e-11 rhs=  3696 wall=0.095s
+binary-aberration  WR W=T/16 M=32 ptol=1e-08 err= 1.6e-09 rhs=  3360 wall=0.082s
+binary-aberration  WR W=T/16 M=32 ptol=1e-11 err= 3.1e-12 rhs=  4096 wall=0.095s
+binary-aberration  WR W=T/16 M=32 ptol=1e-14 err= 2.6e-14 rhs=  5088 wall=0.113s
+binary-aberration  WR W=T/16 M=48 ptol=1e-08 err= 1.6e-09 rhs=  5040 wall=0.111s
+binary-aberration  WR W=T/16 M=48 ptol=1e-11 err= 3.1e-12 rhs=  6144 wall=0.127s
+binary-aberration  WR W=T/16 M=48 ptol=1e-14 err= 3.0e-14 rhs=  7536 wall=0.141s
+triple-naive       DDE-Vern9 tol=1e-06 err= 1.4e-07 nf=    498 wall=0.082s
+triple-naive       DDE-Vern9 tol=1e-08 err= 1.2e-07 nf=    770 wall=0.085s
+triple-naive       DDE-Vern9 tol=1e-10 err= 6.4e-09 nf=   1154 wall=0.086s
+triple-naive       DDE-Vern9 tol=1e-12 err= 2.1e-12 nf=   1842 wall=0.129s
+triple-naive       DDE-Vern9 tol=1e-14 err= 2.6e-13 nf=   2738 wall=0.220s
+triple-naive       DDE-Vern7 tol=1e-06 err= 7.2e-07 nf=    462 wall=0.077s
+triple-naive       DDE-Vern7 tol=1e-08 err= 1.8e-07 nf=    792 wall=0.085s
+triple-naive       DDE-Vern7 tol=1e-10 err= 4.0e-09 nf=   1202 wall=0.110s
+triple-naive       DDE-Vern7 tol=1e-12 err= 1.7e-11 nf=   1062 wall=0.104s
+triple-naive       DDE-Vern7 tol=1e-14 err= 1.9e-13 nf=   1962 wall=0.128s
+triple-naive       DDE-Tsit5 tol=1e-06 err= 3.6e-06 nf=    399 wall=0.079s
+triple-naive       DDE-Tsit5 tol=1e-08 err= 9.4e-08 nf=    897 wall=0.089s
+triple-naive       DDE-Tsit5 tol=1e-10 err= 1.8e-08 nf=    759 wall=0.084s
+triple-naive       DDE-Tsit5 tol=1e-12 err= 3.0e-10 nf=   1893 wall=0.108s
+triple-naive       DDE-Tsit5 tol=1e-14 err= 2.6e-12 nf=   4641 wall=0.172s
+triple-naive       WR W=T/4  M=12 ptol=1e-08 err= 3.0e-09 rhs=   732 wall=0.139s
+triple-naive       WR W=T/4  M=12 ptol=1e-11 err= 2.1e-09 rhs=   948 wall=0.169s
+triple-naive       WR W=T/4  M=12 ptol=1e-14 err= 2.1e-09 rhs=  1116 wall=0.190s
+triple-naive       WR W=T/4  M=16 ptol=1e-08 err= 9.3e-10 rhs=   976 wall=0.147s
+triple-naive       WR W=T/4  M=16 ptol=1e-11 err= 2.3e-13 rhs=  1264 wall=0.169s
+triple-naive       WR W=T/4  M=16 ptol=1e-14 err= 2.1e-13 rhs=  1488 wall=0.191s
+triple-naive       WR W=T/4  M=24 ptol=1e-08 err= 9.3e-10 rhs=  1416 wall=0.165s
+triple-naive       WR W=T/4  M=24 ptol=1e-11 err= 7.2e-14 rhs=  1824 wall=0.185s
+triple-naive       WR W=T/4  M=24 ptol=1e-14 err= 4.7e-15 rhs=  2136 wall=0.205s
+triple-naive       WR W=T/4  M=32 ptol=1e-08 err= 9.3e-10 rhs=  1888 wall=0.171s
+triple-naive       WR W=T/4  M=32 ptol=1e-11 err= 6.5e-14 rhs=  2432 wall=0.195s
+triple-naive       WR W=T/4  M=32 ptol=1e-14 err= 6.8e-15 rhs=  2848 wall=0.208s
+triple-naive       WR W=T/4  M=48 ptol=1e-08 err= 9.3e-10 rhs=  2736 wall=0.192s
+triple-naive       WR W=T/4  M=48 ptol=1e-11 err= 7.7e-14 rhs=  3552 wall=0.259s
+triple-naive       WR W=T/4  M=48 ptol=1e-14 err= 1.7e-14 rhs=  4176 wall=0.253s
+triple-naive       WR W=T/8  M=12 ptol=1e-08 err= 2.6e-10 rhs=   792 wall=0.223s
+triple-naive       WR W=T/8  M=12 ptol=1e-11 err= 8.9e-13 rhs=   996 wall=0.214s
+triple-naive       WR W=T/8  M=12 ptol=1e-14 err= 9.6e-13 rhs=  1188 wall=0.206s
+triple-naive       WR W=T/8  M=16 ptol=1e-08 err= 2.6e-10 rhs=  1056 wall=0.161s
+triple-naive       WR W=T/8  M=16 ptol=1e-11 err= 1.5e-13 rhs=  1328 wall=0.180s
+triple-naive       WR W=T/8  M=16 ptol=1e-14 err= 3.4e-15 rhs=  1584 wall=0.210s
+triple-naive       WR W=T/8  M=24 ptol=1e-08 err= 2.6e-10 rhs=  1536 wall=0.177s
+triple-naive       WR W=T/8  M=24 ptol=1e-11 err= 1.4e-13 rhs=  1944 wall=0.192s
+triple-naive       WR W=T/8  M=24 ptol=1e-14 err= 4.4e-15 rhs=  2328 wall=0.213s
+triple-naive       WR W=T/8  M=32 ptol=1e-08 err= 2.6e-10 rhs=  2048 wall=0.183s
+triple-naive       WR W=T/8  M=32 ptol=1e-11 err= 1.5e-13 rhs=  2592 wall=0.205s
+triple-naive       WR W=T/8  M=32 ptol=1e-14 err= 7.3e-15 rhs=  3104 wall=0.224s
+triple-naive       WR W=T/8  M=48 ptol=1e-08 err= 2.6e-10 rhs=  2976 wall=0.207s
+triple-naive       WR W=T/8  M=48 ptol=1e-11 err= 1.5e-13 rhs=  3744 wall=0.231s
+triple-naive       WR W=T/8  M=48 ptol=1e-14 err= 6.4e-15 rhs=  4464 wall=0.257s
+triple-naive       WR W=T/16 M=12 ptol=1e-08 err= 1.2e-10 rhs=   888 wall=0.168s
+triple-naive       WR W=T/16 M=12 ptol=1e-11 err= 2.7e-13 rhs=  1188 wall=0.201s
+triple-naive       WR W=T/16 M=12 ptol=1e-14 err= 2.8e-15 rhs=  1464 wall=0.233s
+triple-naive       WR W=T/16 M=16 ptol=1e-08 err= 1.2e-10 rhs=  1184 wall=0.172s
+triple-naive       WR W=T/16 M=16 ptol=1e-11 err= 2.7e-13 rhs=  1584 wall=0.203s
+triple-naive       WR W=T/16 M=16 ptol=1e-14 err= 4.7e-15 rhs=  1952 wall=0.240s
+triple-naive       WR W=T/16 M=24 ptol=1e-08 err= 1.2e-10 rhs=  1728 wall=0.180s
+triple-naive       WR W=T/16 M=24 ptol=1e-11 err= 2.7e-13 rhs=  2328 wall=0.215s
+triple-naive       WR W=T/16 M=24 ptol=1e-14 err= 2.9e-15 rhs=  2880 wall=0.278s
+triple-naive       WR W=T/16 M=32 ptol=1e-08 err= 1.2e-10 rhs=  2304 wall=0.232s
+triple-naive       WR W=T/16 M=32 ptol=1e-11 err= 2.7e-13 rhs=  3104 wall=0.236s
+triple-naive       WR W=T/16 M=32 ptol=1e-14 err= 4.0e-15 rhs=  3840 wall=0.269s
+triple-naive       WR W=T/16 M=48 ptol=1e-08 err= 1.2e-10 rhs=  3456 wall=0.242s
+triple-naive       WR W=T/16 M=48 ptol=1e-11 err= 2.7e-13 rhs=  4656 wall=0.290s
+triple-naive       WR W=T/16 M=48 ptol=1e-14 err= 3.7e-15 rhs=  5760 wall=0.327s

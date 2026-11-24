@@ -214,7 +214,9 @@ def barycentric_interpolate(
     if scalar:
         vals = vals[:, None]
     diff = tq[:, None] - t_nodes[None, :]            # (m, n)
-    exact = np.isclose(diff, 0.0)
+    # exact node hits only: np.isclose's default atol=1e-8 would snap every query
+    # within 1e-8 (absolute time!) of a node to that node's value -> O(v*1e-8) error
+    exact = diff == 0.0
     safe = np.where(exact, 1.0, diff)
     w_over = weights[None, :] / safe                 # (m, n)
     num = w_over @ vals                              # (m, K)

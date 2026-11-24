@@ -29,3 +29,4 @@ htmlcov/
 assets/_*.png
 assets/_*.gif
 out.gif
+research/cache/

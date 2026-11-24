@@ -194,11 +194,13 @@ def test_stream_continuous_and_finite():
 
 def test_stream_memory_bounded():
     s = _stream("Deep Chaos (3-Body)")
-    sizes = []
+    counts = []
     for _ in range(25):
         s.step()
-        sizes.append(s.buf_R.nbytes)
-    assert max(sizes) <= s.max_buffer_samples * s.N * 3 * 8
+        counts.append(len(s.history.segments))
+    # retained windows are bounded by ceil(buffer / min window) + 1, never grow
+    assert max(counts[5:]) <= max(counts[:5]) + 1
+    assert s.history.clamped == 0
 
 
 def test_stream_momentum_conserved():
@@ -244,3 +246,91 @@ def test_presets_build_and_run(name):
                                 record_history=False)
     assert np.isfinite(res.trajectory).all()
     assert res.trajectory.shape[1] == len(cfg.bodies)
+
+
+# --------------------------------------------------------------------------- #
+# State-dependent-delay (SD-DDE) core: history, breaking points, interpolation
+# --------------------------------------------------------------------------- #
+def _binary_bodies():
+    v = 0.5 * np.sqrt(2.0)
+    return [Body("a", 1.0, [0.5, 0, 0], [0, v, 0]), Body("b", 1.0, [-0.5, 0, 0], [0, -v, 0])]
+
+
+def _sdde_stream(M, nwin, T, track, model="naive"):
+    s = PiecewiseVolterraStream(
+        _binary_bodies(), G=1.0, c=8.0, softening=0.0, use_retardation=True, use_pn=False,
+        relaxation=1.0, window_span=T / nwin, window_samples=M, iterations=200,
+        accelerator="picard", retardation=model, pn="none", tol=1e-13, adaptive=False,
+        track_breaks=track)
+    while s.t_epoch < T - 1e-12:
+        s.window_span = min(T / nwin, T - s.t_epoch)
+        s.step()
+    return s
+
+
+def test_barycentric_no_snapping_near_nodes():
+    """Queries within 1e-8 of a node must not be snapped to the node value."""
+    from aura_engine.operators import chebyshev_lobatto_nodes
+    M = 32
+    t = (chebyshev_lobatto_nodes(M) + 1.0) / 2.0
+    w = barycentric_weights_cgl(M)
+    tq = t[5] + np.array([0.0, 1e-12, 1e-9, 5e-9])
+    err = np.abs(barycentric_interpolate(t, np.sin(3 * t), w, tq) - np.sin(3 * tq))
+    assert err.max() < 1e-14
+
+
+def test_segmented_batch_uses_computed_past():
+    """Chained segments must read the *computed* retarded past (not a ballistic
+    extrapolation from each segment epoch): result independent of segment count."""
+    def run(nseg):
+        s = VolterraSystem(_binary_bodies(), G=1.0, c=8.0, softening=0.0, t_span=2.0,
+                           n_samples=120 * nseg, relaxation=1.0, accelerator="picard",
+                           retardation="naive", pn="none")
+        return s.propagate(200, n_segments=nseg, record_history=False, tol=1e-13).trajectory[-1]
+    one = run(1)
+    for nseg in (2, 8):
+        assert np.abs(run(nseg) - one).max() < 1e-6     # was 4.8e-3 with ballistic past
+
+
+def test_stream_matches_single_window_retarded():
+    s = _sdde_stream(60, 8, 2.0, track=0)
+    one = VolterraSystem(_binary_bodies(), G=1.0, c=8.0, softening=0.0, t_span=2.0,
+                         n_samples=120, relaxation=1.0, accelerator="picard",
+                         retardation="naive", pn="none").relax(200, tol=1e-13).trajectory[-1]
+    assert np.abs(s.R_epoch - one).max() < 1e-6          # was 4e-6 with the linear buffer
+
+
+def test_breaking_point_alignment_restores_spectral_convergence():
+    """Without alignment the ballistic-history kink at t0 + tau caps accuracy;
+    aligned windows converge to ~machine precision (M=32 vs M=48 agree)."""
+    T = 2 * (2 * np.pi / np.sqrt(2.0))
+    off32, off48 = (_sdde_stream(M, 8, T, track=0).R_epoch for M in (32, 48))
+    on32, on48 = (_sdde_stream(M, 8, T, track=2).R_epoch for M in (32, 48))
+    assert np.abs(off32 - off48).max() > 1e-7
+    assert np.abs(on32 - on48).max() < 1e-12
+
+
+def test_breaks_are_registered_and_bounded():
+    T = 2 * (2 * np.pi / np.sqrt(2.0))
+    s = _sdde_stream(32, 8, T, track=2)
+    assert s.break_splits >= 2
+    assert all(lvl <= 2 for _, lvl in s.breaks)
+    assert len(s.breaks) <= 8
+    assert s.history.clamped == 0
+
+
+def test_break_not_duplicated_into_sliver_window():
+    """Regression: a truncated re-solve can end a hair before the break; the next
+    window must not re-find it, cut a sliver window and duplicate the chain."""
+    s = PiecewiseVolterraStream(
+        _binary_bodies(), G=1.0, c=8.0, softening=0.0, use_retardation=True, use_pn=False,
+        relaxation=1.0, window_span=0.3, window_samples=24, iterations=200,
+        accelerator="picard", retardation="naive", pn="none", tol=1e-13, adaptive=False,
+        track_breaks=3)
+    spans = []
+    while s.t_epoch < 1.0:
+        spans.append(s.step().span)
+    assert min(spans) > 0.05
+    assert s.break_splits == 3
+    times = sorted(d for d, _ in s.breaks)
+    assert all(b - a > 0.1 for a, b in zip(times, times[1:]))

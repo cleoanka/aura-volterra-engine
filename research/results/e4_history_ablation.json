@@ -1,0 +1,290 @@
+[
+ {
+  "case": "binary-naive",
+  "engine": "v0.3.0",
+  "n_windows": 8,
+  "M": 16,
+  "stream_err": 0.00042226020482316606,
+  "batch_segmented_err": 0.006468180460981632
+ },
+ {
+  "case": "binary-naive",
+  "engine": "v0.3.0",
+  "n_windows": 8,
+  "M": 32,
+  "stream_err": 7.01593164011971e-05,
+  "batch_segmented_err": 0.0064321456093321405
+ },
+ {
+  "case": "binary-naive",
+  "engine": "v0.3.0",
+  "n_windows": 8,
+  "M": 48,
+  "stream_err": 4.984174272792963e-05,
+  "batch_segmented_err": 0.006440269413716226
+ },
+ {
+  "case": "binary-naive",
+  "engine": "v0.3.0",
+  "n_windows": 16,
+  "M": 16,
+  "stream_err": 0.000351895843044292,
+  "batch_segmented_err": 0.010820969325531227
+ },
+ {
+  "case": "binary-naive",
+  "engine": "v0.3.0",
+  "n_windows": 16,
+  "M": 32,
+  "stream_err": 6.37805393894908e-05,
+  "batch_segmented_err": 0.010831225732515604
+ },
+ {
+  "case": "binary-naive",
+  "engine": "v0.3.0",
+  "n_windows": 16,
+  "M": 48,
+  "stream_err": 3.503697769802194e-05,
+  "batch_segmented_err": 0.010833879287870163
+ },
+ {
+  "case": "binary-naive",
+  "engine": "v0.3.0",
+  "n_windows": 32,
+  "M": 16,
+  "stream_err": 0.0002383779823004195,
+  "batch_segmented_err": 0.01967094134205194
+ },
+ {
+  "case": "binary-naive",
+  "engine": "v0.3.0",
+  "n_windows": 32,
+  "M": 32,
+  "stream_err": 4.9979926766696714e-05,
+  "batch_segmented_err": 0.019669968844991947
+ },
+ {
+  "case": "binary-naive",
+  "engine": "v0.3.0",
+  "n_windows": 32,
+  "M": 48,
+  "stream_err": 2.3978965698279175e-05,
+  "batch_segmented_err": 0.019670104255035792
+ },
+ {
+  "case": "binary-naive",
+  "engine": "spectral-history",
+  "n_windows": 8,
+  "M": 16,
+  "stream_err": 3.2180723550157e-05,
+  "batch_segmented_err": 3.2180723550157e-05
+ },
+ {
+  "case": "binary-naive",
+  "engine": "spectral-history",
+  "n_windows": 8,
+  "M": 32,
+  "stream_err": 3.698004319874215e-06,
+  "batch_segmented_err": 3.6980043207623936e-06
+ },
+ {
+  "case": "binary-naive",
+  "engine": "spectral-history",
+  "n_windows": 8,
+  "M": 48,
+  "stream_err": 1.102775418093671e-06,
+  "batch_segmented_err": 1.1027754167614034e-06
+ },
+ {
+  "case": "binary-naive",
+  "engine": "spectral-history",
+  "n_windows": 16,
+  "M": 16,
+  "stream_err": 9.136796388364843e-06,
+  "batch_segmented_err": 9.136796387032575e-06
+ },
+ {
+  "case": "binary-naive",
+  "engine": "spectral-history",
+  "n_windows": 16,
+  "M": 32,
+  "stream_err": 1.0561448162693665e-06,
+  "batch_segmented_err": 1.0561448138268759e-06
+ },
+ {
+  "case": "binary-naive",
+  "engine": "spectral-history",
+  "n_windows": 16,
+  "M": 48,
+  "stream_err": 3.1098778752181033e-07,
+  "batch_segmented_err": 3.1098778330296284e-07
+ },
+ {
+  "case": "binary-naive",
+  "engine": "spectral-history",
+  "n_windows": 32,
+  "M": 16,
+  "stream_err": 1.3276615251633928e-07,
+  "batch_segmented_err": 1.3276616006585584e-07
+ },
+ {
+  "case": "binary-naive",
+  "engine": "spectral-history",
+  "n_windows": 32,
+  "M": 32,
+  "stream_err": 2.3996305387186112e-08,
+  "batch_segmented_err": 2.3996304721052297e-08
+ },
+ {
+  "case": "binary-naive",
+  "engine": "spectral-history",
+  "n_windows": 32,
+  "M": 48,
+  "stream_err": 2.7565224547387857e-08,
+  "batch_segmented_err": 2.75652174419605e-08
+ },
+ {
+  "case": "triple-naive",
+  "engine": "v0.3.0",
+  "n_windows": 8,
+  "M": 16,
+  "stream_err": 8.287780696289437e-05,
+  "batch_segmented_err": 0.0009267798818519135
+ },
+ {
+  "case": "triple-naive",
+  "engine": "v0.3.0",
+  "n_windows": 8,
+  "M": 32,
+  "stream_err": 1.6659245650529897e-05,
+  "batch_segmented_err": 0.0009323144879714584
+ },
+ {
+  "case": "triple-naive",
+  "engine": "v0.3.0",
+  "n_windows": 8,
+  "M": 48,
+  "stream_err": 9.151265395968e-06,
+  "batch_segmented_err": 0.0009318116301442192
+ },
+ {
+  "case": "triple-naive",
+  "engine": "v0.3.0",
+  "n_windows": 16,
+  "M": 16,
+  "stream_err": 0.00010075469132839188,
+  "batch_segmented_err": 0.001887946206002078
+ },
+ {
+  "case": "triple-naive",
+  "engine": "v0.3.0",
+  "n_windows": 16,
+  "M": 32,
+  "stream_err": 1.4054989284445485e-05,
+  "batch_segmented_err": 0.0018862631080587278
+ },
+ {
+  "case": "triple-naive",
+  "engine": "v0.3.0",
+  "n_windows": 16,
+  "M": 48,
+  "stream_err": 8.896423694254585e-06,
+  "batch_segmented_err": 0.001886250119286892
+ },
+ {
+  "case": "triple-naive",
+  "engine": "v0.3.0",
+  "n_windows": 32,
+  "M": 16,
+  "stream_err": 6.561874269711554e-05,
+  "batch_segmented_err": 0.0038230702418734497
+ },
+ {
+  "case": "triple-naive",
+  "engine": "v0.3.0",
+  "n_windows": 32,
+  "M": 32,
+  "stream_err": 1.3881791201764138e-05,
+  "batch_segmented_err": 0.0038225378914430452
+ },
+ {
+  "case": "triple-naive",
+  "engine": "v0.3.0",
+  "n_windows": 32,
+  "M": 48,
+  "stream_err": 6.7014784910501835e-06,
+  "batch_segmented_err": 0.0038225596371672665
+ },
+ {
+  "case": "triple-naive",
+  "engine": "spectral-history",
+  "n_windows": 8,
+  "M": 16,
+  "stream_err": 7.902419647543013e-07,
+  "batch_segmented_err": 7.902419654204351e-07
+ },
+ {
+  "case": "triple-naive",
+  "engine": "spectral-history",
+  "n_windows": 8,
+  "M": 32,
+  "stream_err": 8.044457988631848e-08,
+  "batch_segmented_err": 8.044457855405085e-08
+ },
+ {
+  "case": "triple-naive",
+  "engine": "spectral-history",
+  "n_windows": 8,
+  "M": 48,
+  "stream_err": 1.8315051919515213e-08,
+  "batch_segmented_err": 1.8315052585649028e-08
+ },
+ {
+  "case": "triple-naive",
+  "engine": "spectral-history",
+  "n_windows": 16,
+  "M": 16,
+  "stream_err": 8.04756128403028e-08,
+  "batch_segmented_err": 8.047561195212438e-08
+ },
+ {
+  "case": "triple-naive",
+  "engine": "spectral-history",
+  "n_windows": 16,
+  "M": 32,
+  "stream_err": 1.2217021838623054e-08,
+  "batch_segmented_err": 1.2217020950444635e-08
+ },
+ {
+  "case": "triple-naive",
+  "engine": "spectral-history",
+  "n_windows": 16,
+  "M": 48,
+  "stream_err": 4.241283546591035e-09,
+  "batch_segmented_err": 4.241283546591035e-09
+ },
+ {
+  "case": "triple-naive",
+  "engine": "spectral-history",
+  "n_windows": 32,
+  "M": 16,
+  "stream_err": 1.6029898963765277e-08,
+  "batch_segmented_err": 1.6029898297631462e-08
+ },
+ {
+  "case": "triple-naive",
+  "engine": "spectral-history",
+  "n_windows": 32,
+  "M": 32,
+  "stream_err": 1.90031057556439e-09,
+  "batch_segmented_err": 1.9003099094305753e-09
+ },
+ {
+  "case": "triple-naive",
+  "engine": "spectral-history",
+  "n_windows": 32,
+  "M": 48,
+  "stream_err": 3.7973557631687527e-10,
+  "batch_segmented_err": 3.7973535427227034e-10
+ }
+]
