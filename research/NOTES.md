@@ -343,17 +343,17 @@ tol 1e-12 → err 1e-8; vel-based tol 1e-12 → err 3e-12).
 
 | N | DDE tol 1e-10: err / nf / wall | WR-B (C² φ + acc 1e-10): err / rhs / wall | WR-C (+L1): err / rhs / windows / wall |
 |---|---|---|---|
-| 3 | 2.3e-11 / 3250 / 0.27 s | 8.9e-11 / 4496 / 0.41 s | 4.0e-13 / 5008 / 37 / 0.65 s |
-| 4 | 1.7e-11 / 1602 / 0.27 s | 3.3e-11 / 2048 / 0.36 s | 1.2e-13 / 3936 / 27 / 0.73 s |
-| 6 | 8.6e-11 / 738 / 0.25 s | 1.4e-10 / 720 / 0.09 s | 1.9e-14 / 3952 / 35 / 1.6 s |
-| 8 | 3.7e-11 / 3074 / 1.17 s | 6.1e-11 / 3744 / 1.27 s | 9.9e-14 / 11152 / 80 / 8.5 s |
-| 12 | 1.8e-09 / 2130 / 2.09 s | 6.8e-11 / 2608 / 1.72 s | 1.7e-13 / 22384 / 141 / 60 s |
-| 16 | 1.3e-09 / 2786 / 5.03 s | 3.6e-10 / 2608 / 2.23 s | 6.9e-13 / 36912 / 249 / 205 s |
+| 3 | 2.3e-11 / 3250 / 0.27 s | 8.9e-11 / 4496 / 0.44 s | 6.4e-13 / 5488 / 38 / 0.53 s |
+| 4 | 1.7e-11 / 1602 / 0.27 s | 3.3e-11 / 2048 / 0.24 s | 4.7e-13 / 4800 / 25 / 0.69 s |
+| 6 | 8.6e-11 / 738 / 0.25 s | 1.4e-10 / 720 / 0.09 s | 1.8e-14 / 4528 / 35 / 1.6 s |
+| 8 | 3.7e-11 / 3074 / 1.17 s | 6.1e-11 / 3744 / 1.14 s | 1.2e-13 / 11728 / 81 / 7.2 s |
+| 12 | 1.8e-09 / 2130 / 2.09 s | 6.8e-11 / 2608 / 1.19 s | 1.9e-13 / 29936 / 148 / 53 s |
+| 16 | 1.3e-09 / 2786 / 5.03 s | 3.6e-10 / 2608 / 1.91 s | 1.0e-12 / 52032 / 257 / 2e+02 s |
 
 **Finding 2 — modes.** WR-B tracks its tolerance at every N with RHS cost 1.0–1.5× of
 DelayDiffEq, and is *faster in wall time from N ≈ 12* (N = 16: 2.2 s vs 5.0 s) (all-pairs field vectorised over
 nodes × pairs; per-call cost amortises). WR-C (break tracking) buys ~1e-13 but the
-number of level-1 breaks is N(N−1) → windows ∝ N² → unusable beyond N ≈ 6. Practical
+number of level-1 breaks is N(N−1) → windows ∝ N² → unusable beyond N ≈ 6 (re-run after review fixes: N = 16 → 257 windows, 200 s). Practical
 recommendation: **C² initial history + error control** (B) in general; **tracking (C)**
 only for few bodies when machine precision is the goal. (Close encounters favour
 adaptive steppers in RHS count — MCPI literature addresses them with Sundman/KS
@@ -508,6 +508,42 @@ the radiation-reaction order — it is real classical electrodynamics, not a toy
    `test_breaking_point_alignment_restores_spectral_convergence`,
    `test_breaks_are_registered_and_bounded`.
 
+8. **Second independent review (2026-11-24) — confirmed and fixed:**
+   - *Near-coincident break roots were merged or dropped* (time-based dedup 1e-4·W,
+     start margin 1e-6·span). In the neutral LW model this silently cost ~5e-7 for nearly
+     symmetric systems (masses 1 and 1+ε). Now breaks are identified by their **origin**
+     `(receiver i, source j, parent d)` — the same root re-found after a re-solve is not
+     new, two different roots are never merged by time; roots within 1e-9·span of a
+     window start are *registered* (descendants tracked) instead of dropped; roots closer
+     than 1e-9·W are aligned together but each keeps its own origin. Root landing uses the
+     closed-form light-cone derivative `τ' = n·(v_i − v_j)/(c − n·v_j)` (well conditioned on
+     sliver windows; the Chebyshev derivative was not). Warm start / Newton landing are
+     skipped on windows < 1e-6·W.
+     Near-symmetric LW (c = 8, T = 1), max |M16 − M32| before → after:
+     ε = 1e-3: 5.4e-7 → 1.4e-11; 1e-4: 9e-9 → 5e-11; 1e-5: 5.4e-7 → 2e-9;
+     1e-6: 1e-10 → 2e-13; 1e-7: 8e-15 → 7e-15; ε = 0, 0.1: round-off.
+     **Open:** ε = 1e-3…1e-5 is not yet at round-off. Against the 128-bit reference M = 16
+     is at 1e-15 but M = 32/48 at 1e-11…2e-9; the deviation starts in the first full window
+     after the second sliver; it is not the one-sided-lookup tolerance (varying it does
+     not help, shrinking it breaks M = 16). Root cause not found.
+   - *Error control halved before break alignment* (kink inflated the tail → needless
+     halvings, slivers). Now alignment first, control second.
+   - *`_trunc_err` not Galilean-invariant* (scaled by max|V| incl. the centre-of-mass
+     velocity). Now relative to the spread about the centre of mass.
+   - *Clamp counter included rejected trial solves*: now only the accepted solve counts,
+     and the warning is issued once per accepted window.
+   - **Regression caught while fixing:** an earlier slice edit (closed-form τ') had
+     deleted `_trunc_err`, so `accuracy_tol` raised AttributeError and no test covered it.
+     E7 numbers predate that edit and were re-run afterwards. New test
+     `test_accuracy_control_resolves_close_encounter_and_is_boost_invariant`.
+   - Clean per review: LW formulas (checked against finite differences of the LW
+     potentials, 8e-9 = FD error; radiation term 12 % of the force), vectorised field vs
+     loop (N = 4, unequal masses, softening, both schemes), `_A_cur` handling, one-sided
+     history logic, `_end_derivatives` scaling, `_span_hint` bounds.
+   - Noted, not fixed: Anderson needs ~45 % more iterations than Picard on LW (it does not
+     see the lagged source acceleration); LW with N = 3 and full tracking cascades into
+     ~5e-5-wide windows (correct but slow).
+
 Findings that contradict the v0.3.0 README (fix README before any public claim):
 - "Anderson 32 vs 54 iterations" compared against *damped* Picard; undamped Picard
   beats both (E2/E2b). `test_anderson_beats_picard` encodes that misleading comparison.
@@ -548,7 +584,7 @@ Findings that contradict the v0.3.0 README (fix README before any public claim):
 ```bash
 cd ~/aura-volterra-engine
 # Julia env (once): ~/.julia-envs/dde with DelayDiffEq, OrdinaryDiffEq, JSON3
-.venv/bin/python -m pytest -q                          # 28 tests
+.venv/bin/python -m pytest -q                          # 31 tests
 .venv/bin/python research/exp_e7_scaling.py 3 4 6 8 12 16  # ~6 min (N=16 WR-C dominates)
 .venv/bin/python research/exp_e6_laplace.py            # ~10 s
 .venv/bin/python research/exp_e8_break_order.py        # ~30 s

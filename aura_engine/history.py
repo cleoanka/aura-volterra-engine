@@ -165,12 +165,7 @@ class SegmentHistory:
                 r[before_all], v[before_all] = self.initial(j, tq[before_all])
             pruned = rest & ~before_all
             if pruned.any() and self.count_clamps:
-                if self.clamped == 0:
-                    import warnings
-                    warnings.warn("retarded lookup reached pruned history; clamping to the "
-                                  "oldest retained sample (increase buffer_safety)",
-                                  RuntimeWarning, stacklevel=2)
-                self.clamped += int(pruned.sum())
+                self.clamped += int(pruned.sum())     # the engine warns on acceptance
             if pruned.any():                 # past was pruned: clamp to oldest kept
                 seg = self.segments[0]
                 r[pruned] = seg.RV[0, j, :3]

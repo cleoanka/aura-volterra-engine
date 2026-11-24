@@ -760,7 +760,7 @@ class PiecewiseVolterraStream(_EngineCore):
         # discontinuity set: (time, level, body). Level 0 = t0 (body -1 = all),
         # where the derivative jumps because the initial history phi is not the
         # solution.
-        self.breaks = [(self.t_epoch, 0, -1)]
+        self.breaks = [(self.t_epoch, 0, -1, None)]
         self.break_splits = 0
         self._tau_cache = {}
         self._span_hint = None
@@ -859,12 +859,16 @@ class PiecewiseVolterraStream(_EngineCore):
 
     def _solve_span(self, span, record_history=False):
         self._tau_cache = {}
+        # only the accepted (last) solve of a step may count pruned-history lookups
+        self.history.clamped = getattr(self, "_clamp_base", self.history.clamped)
         if span != self._span:
             self._build_ops(span)
         t_local = self.t
         base = self.R_epoch[None] + t_local[:, None, None] * self.V_epoch[None]
         tl = t_local[:, None, None]
         derivs = self._prev_end_derivs if self.warm_start else None
+        if span < 1e-6 * self.window_span:
+            derivs = None                       # sliver window: plain predictor
         if derivs is not None:
             # 4th-order Taylor predictor from the previous window's own Chebyshev
             # polynomial (a, jerk, snap at its end): the true retarded force
@@ -910,15 +914,21 @@ class PiecewiseVolterraStream(_EngineCore):
             return None
         tg = self.t_epoch + self.t
         span = self._span
-        margin = 1e-6 * span
-        # a root this close to a break that is already registered (for the same
-        # receiving body) is that same break: the truncated re-solve can leave the
-        # window end a hair short of it; splitting again would cut a sliver window
-        same = self._break_tol()
+        # Roots are identified by their ORIGIN (receiver i, source j, parent break
+        # d), not by time: two different roots may be arbitrarily close (nearly
+        # symmetric systems) and must both be aligned, while the same root
+        # re-found a hair after the window end (re-solve drift) is not new.
+        # Roots closer than `same` are aligned together (error ~ jump * gap, i.e.
+        # negligible); each keeps its own origin so its descendants are tracked.
+        # Splitting at gaps ~1e-10 would create windows so short that Chebyshev
+        # derivatives (warm start, Newton landing) drown in round-off.
+        same = getattr(self, "_same_rel", 1e-9) * self.window_span
+        margin = min(same, 1e-9 * span)
         roots = []
+        self._boundary_breaks = []
         for (i, j), tau in self._tau_cache.items():
             g = tg - tau
-            for d, lvl, body in self.breaks:
+            for d, lvl, body, _origin in self.breaks:
                 if lvl >= self.track_breaks or body not in (-1, j):
                     continue
                 h = g - d
@@ -940,53 +950,62 @@ class PiecewiseVolterraStream(_EngineCore):
                     else:
                         lo = mid
                 xi = 0.5 * (lo + hi)
-                if self._known_break(self.t_epoch + xi, i):
+                if self._known_origin(i, j, d):
                     continue
                 if margin < xi < span - margin:
                     roots.append((xi, lvl + 1, i, j, d))
+                elif xi <= margin:
+                    # at the window start: nothing to split, but it must be
+                    # registered or its descendants are never tracked
+                    self._boundary_breaks.append((self.t_epoch, lvl + 1, i, (j, d)))
+        for br in self._boundary_breaks:
+            if not self._known_origin(br[2], *br[3]):
+                self.breaks.append(br)
         if not roots:
             return None
         x0 = min(r[0] for r in roots)
         first = min(roots, key=lambda r: r[0])
         self._break_pair = (first[2], first[3], first[4])
-        return x0, sorted({(r[1], r[2]) for r in roots if r[0] - x0 < same})
+        return x0, sorted({(r[1], r[2], (r[3], r[4])) for r in roots if r[0] - x0 < same})
 
-    def _refine_break_end(self, span):
-        """Newton step on g(t_end) = t_end - tau_ij(t_end) - d using the truncated
-        (smooth) window's own Chebyshev tau: the bisection root came from a window
-        that crossed the kink, so it is only ~1e-7 accurate. Returns a new span or
-        None if already exact."""
+    def _refine_break_end(self, span, R, V):
+        """Newton step on g(t_end) = t_end - tau_ij(t_end) - d. The bisection root
+        came from a window that straddled the kink, so it is only ~1e-7 accurate.
+        Uses the closed-form light-cone derivative
+            tau' = n.(v_i - v_j(t-tau)) / (c - n.v_j(t-tau)),  n = (x_i - x_j)/|x_i - x_j|,
+        evaluated on the converged end state -- no differentiation of nodal data,
+        so it stays well conditioned on arbitrarily short (sliver) windows.
+        Returns a new span, or None if already on the root."""
         i, j, d = self._break_pair
         tau = self._tau_cache.get((i, j))
-        if tau is None or self.scheme != "chebyshev":
+        if tau is None:
             return None
-        g = self.t_epoch + span - tau[-1] - d
-        if abs(g) <= 1e-14 * max(1.0, abs(d)):
+        t_end = self.t_epoch + span
+        g = t_end - tau[-1] - d
+        if abs(g) <= 1e-15 * max(1.0, abs(t_end)):
             return None
-        M = len(tau) - 1
-        from .operators import _cheb_value_to_coeff
-        Ct = _cheb_value_to_coeff(M)[0] @ tau
-        dtau = _cheb.chebval(1.0, _cheb.chebder(Ct)) * 2.0 / span
+        rj, vj = self._source_state(j, R, V, np.array([t_end - tau[-1]]))
+        rel = R[-1, i] - rj[0]
+        n = rel / max(np.linalg.norm(rel), 1e-300)
+        dtau = float(n @ (V[-1, i] - vj[0])) / (self.c - float(n @ vj[0]))
         return span - g / (1.0 - dtau)
 
     def _trunc_err(self, V):
         # velocities, not positions: positions are one integral smoother, so their
         # tail under-estimates the error by 2-3 orders near close encounters
-        # (research/NOTES.md, E7)
-        scale = max(float(np.abs(V).max()), 1e-30)
-        return chebyshev_tail(V) / scale
+        # (research/NOTES.md, E7). Measured relative to the velocity spread about
+        # the centre of mass, so a uniform boost does not change the control.
+        Vrel = V - (np.einsum("n,knd->kd", self.masses, V) / self.masses.sum())[:, None, :]
+        scale = max(float(np.abs(Vrel).max()), 1e-30)
+        return chebyshev_tail(Vrel) / scale
 
-    def _break_tol(self):
-        return 1e-4 * self.window_span
-
-    def _known_break(self, t_break, body):
-        tol = self._break_tol()
-        return any(abs(t_break - d) < tol and b in (-1, body) for d, _, b in self.breaks)
+    def _known_origin(self, i, j, d):
+        return any(o == (j, d) and b == i for _, _, b, o in self.breaks)
 
     def _add_break(self, t_break, sources):
-        for level, body in sources:
-            if not self._known_break(t_break, body):
-                self.breaks.append((t_break, level, body))
+        for level, body, origin in sources:
+            if not self._known_origin(body, *origin):
+                self.breaks.append((t_break, level, body, origin))
         # a jump at d can only be reached while t - tau_max <= d
         horizon = t_break - 2.0 * self.buffer_safety * self._max_delay(self.R_epoch) - self._span
         self.breaks = [br for br in self.breaks if br[0] >= horizon]
@@ -999,19 +1018,14 @@ class PiecewiseVolterraStream(_EngineCore):
             # one, so a hard stretch is not re-discovered by halving every window
             span = min(self.window_span, self._span_hint)
         min_span = self.window_span * self.min_span_frac
+        self._clamp_base = self.history.clamped
         R, V, hist, res, converged, used = self._solve_span(span)
         total = used
         while self.adaptive and not converged and span > min_span:
             span *= 0.5
             R, V, hist, res, converged, used = self._solve_span(span)
             total += used
-        if self.accuracy_tol is not None and self.scheme == "chebyshev":
-            while converged and span > min_span and self._trunc_err(V) > self.accuracy_tol:
-                span *= 0.5
-                R, V, hist, res, converged, used = self._solve_span(span)
-                total += used
-                self.accuracy_halvings += 1
-        accepted_span = span
+        span_pre_break = span
         # align the window end with the earliest breaking point inside it (the
         # root moves slightly with the truncated solve: repeat to self-consistency)
         new_break = None
@@ -1026,7 +1040,7 @@ class PiecewiseVolterraStream(_EngineCore):
                 self.break_splits += 1
             if new_break is not None:
                 for _ in range(3):                         # land exactly on the root
-                    new_span = self._refine_break_end(span)
+                    new_span = self._refine_break_end(span, R, V)
                     if new_span is None or not (0.0 < new_span < 1.5 * span):
                         break
                     span = new_span
@@ -1040,9 +1054,25 @@ class PiecewiseVolterraStream(_EngineCore):
                 new_break = None
                 R, V, hist, res, converged, used = self._solve_span(span)
                 total += used
+        # error control AFTER break alignment: a kink inside the window inflates
+        # the Chebyshev tail, and cutting at the break is the right fix, not halving
+        halved = False
+        if self.accuracy_tol is not None and self.scheme == "chebyshev":
+            while converged and span > min_span and self._trunc_err(V) > self.accuracy_tol:
+                span *= 0.5
+                new_break = None                       # the break now lies beyond the end
+                halved = True
+                R, V, hist, res, converged, used = self._solve_span(span)
+                total += used
+                self.accuracy_halvings += 1
         self.residual_history = res
         if self.accuracy_tol is not None:
-            self._span_hint = 1.5 * accepted_span
+            self._span_hint = 1.5 * (span if halved else span_pre_break)
+        if self.history.clamped > self._clamp_base:
+            import warnings
+            warnings.warn("retarded lookup reached pruned history on the accepted solution; "
+                          "clamped to the oldest retained sample (increase buffer_safety)",
+                          RuntimeWarning, stacklevel=2)
 
         tg = self.t_epoch + self.t
         e = newtonian_energy(self.masses, R, V, self.G, self.eps2)
@@ -1058,7 +1088,8 @@ class PiecewiseVolterraStream(_EngineCore):
         if new_break is not None:
             self._add_break(new_epoch, new_break)
         self._update_buffer(tg, R, V, new_epoch)
-        self._prev_end_derivs = self._end_derivatives(V)
+        self._prev_end_derivs = (self._end_derivatives(V)
+                                 if span >= 1e-6 * self.window_span else None)
         self.R_epoch, self.V_epoch = R[-1].copy(), V[-1].copy()
         self.t_epoch = new_epoch
         self.window_index += 1

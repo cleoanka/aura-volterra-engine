@@ -406,3 +406,31 @@ def test_lienard_wiechert_neutral_needs_all_levels():
     level_effect = np.abs(run(32, 1) - run(32, 50)).max()      # the tracked level does
     assert m_effect < 0.5 * level_effect
     assert np.abs(run(16, 50) - run(32, 50)).max() < 1e-14
+
+
+def test_accuracy_control_resolves_close_encounter_and_is_boost_invariant():
+    """Fixed windows report convergence but are wrong through a close encounter;
+    accuracy_tol must fix it, and a uniform boost must not change the control."""
+    def bodies(u):
+        # eccentric binary (pericentre ~0.05) boosted by u along y
+        return [Body("a", 1.0, [0.5, 0, 0], [0, 0.12 + u, 0]),
+                Body("b", 1.0, [-0.5, 0, 0], [0, -0.12 + u, 0])]
+    def run(u, acc, M=16, W=0.6, T=1.8):
+        s = PiecewiseVolterraStream(
+            bodies(u), G=1.0, c=1e9, softening=0.0, use_retardation=False, use_pn=False,
+            relaxation=1.0, window_span=W, window_samples=M, iterations=300,
+            accelerator="picard", retardation="none", pn="none", tol=1e-13,
+            adaptive=acc is not None, accuracy_tol=acc, min_span_frac=1e-4)
+        while s.t_epoch < T - 1e-12:
+            s.window_span = min(W, T - s.t_epoch)
+            s.step()
+        rel = s.R_epoch - s.R_epoch.mean(0)
+        return rel, s.accuracy_halvings
+    fine, _ = run(0.0, 1e-13, M=32, W=0.1)
+    coarse, _ = run(0.0, None)
+    ctrl, h0 = run(0.0, 1e-10)
+    boosted, h1 = run(5.0, 1e-10)
+    assert np.abs(coarse - fine).max() > 1e-4            # fixed windows are wrong
+    assert np.abs(ctrl - fine).max() < 1e-7              # control fixes it
+    assert np.abs(boosted - fine).max() < 1e-7
+    assert abs(h0 - h1) <= 2                              # boost-invariant control
