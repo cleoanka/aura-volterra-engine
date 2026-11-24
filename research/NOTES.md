@@ -17,11 +17,13 @@ the converged past from a **spectral segment history**. Three contributions:
 (i) because retarded delays keep the Picard operator causal, the quasi-nilpotent bound
 `e_n ≤ e_0 x^{2n}/(2n)!` survives the state-dependent delay — no window-length limit
 in exact arithmetic, iterations linear in `√L·W`, superlinear convergence that damping
-and Anderson acceleration only slow down; (ii) **breaking-point-aligned windows**: the
-initial-history discontinuity propagates along `t − τ_ij(t) = d`; locating these roots
-on the converged iterate and ending windows there restores spectral convergence
-(1e-6 → 1e-15), with a simple order rule (+2 derivatives per level for position
-coupling, +1 for velocity coupling); (iii) validation against DelayDiffEq.jl in 128-bit
+and Anderson acceleration only slow down; (ii) **breaking-point-aligned windows** — NOT a new idea
+in itself (Guglielmi–Hairer 2008 solve `t − α(t, u(t)) = ξ` together with the step; that
+is what our Newton landing does). What is new is the waveform-relaxation setting: roots
+located on the converged window iterate, one-sided history lookups at joins, and the
+measured consequence for spectral methods — alignment restores spectral convergence
+(1e-6 → 1e-15), with the order rule (+2 / +1 / 0 derivatives per level for position /
+velocity / acceleration coupling) as a corollary of Bellen–Zennaro propagation; (iii) validation against DelayDiffEq.jl in 128-bit
 arithmetic: comparable RHS cost, but machine-precision accuracy that the step-marching
 solver does not reach at any tolerance, even with its discontinuity tracking on —
 whose API cannot express the implicit light-cone lag; (iv) a physical, **neutral**
@@ -50,9 +52,16 @@ before citing.**
 | Retarded two-body (physics) | Driver, *A two-body problem of classical electrodynamics: the one-dimensional case*, Ann. Phys. 1963, doi 10.1016/0003-4916(63)90227-6 (✓) — electrodynamic 1D two-body, existence | no MCPI |
 | Retarded gravity physics | Laplace (Mécanique céleste); Carlip, *Aberration and the speed of gravity*, arXiv gr-qc/9909087 (✓; journal ref NOT confirmed — agy said Phys. Lett. A 2000, check) | — |
 | SD-DDE solver software | Widmann & Rackauckas, *DelayDiffEq: Generating DDE solvers via recursive embedding of ODE solvers*, arXiv:2208.12879 (✓ — agy gave a wrong title); RADAR5: Guglielmi & Hairer, Computing 67 (2001) 1–12, doi 10.1007/s006070170013 (✓); ddesd (Shampine) (?) | benchmarks are 1–4-dim; no N-body |
-| **Breaking points for implicit/state-dependent DDEs** | Guglielmi & Hairer, *Computing breaking points in implicit delay differential equations* (✓ title; preprint page returned HTTP 403 — full text NOT read yet) | step-marching (RADAR5); the closest prior work to our break alignment — the delta is doing it inside windowed Picard–Chebyshev with one-sided join lookups and Newton landing on the converged iterate |
+| **Breaking points for implicit/state-dependent DDEs** | Guglielmi & Hairer, *Computing breaking points in implicit delay differential equations*, Adv. Comput. Math. 29(3) (2008) 229–247, doi 10.1007/s10444-007-9044-5 (✓ citation; full text NOT read — abstract + survey description): state-dependent, **neutral**, DAE; breaking point computed by adding `t_{n+1} − α(t_{n+1}, u(t_{n+1})) = ξ` to the implicit stage equations; search activated on step rejection. Also: Eremin (SPbU), *efficient accurate noniterative breaking point detection* for SD-DDEs (✓ title only) | step-marching (RADAR5); the closest prior work to our break alignment — the delta is doing it inside windowed Picard–Chebyshev with one-sided join lookups and Newton landing on the converged iterate |
 | Recent survey | Humphries, Eremin, Wang, *Practicalities of State-Dependent and Threshold Delay Differential Equations*, arXiv:2510.17126 (✓, partly read) | breaking point of order k (Bellen–Zennaro def.); propagation ξ_j − τ(ξ_j, u(ξ_j)) = ξ_i raises the order by **at least one** (1st-order DDEs); only finitely many need tracking; location accuracy ξ(h) − ξ_j = O(h^{p/(k+1)}) (Thm 4.2); "it is ξ_j^h, and not ξ_j, that should be in the mesh". Methods: FCRK Runge–Kutta; no spectral/WR; no neutral discussion seen |
 | Andò & Sieber arXiv:2410.07375 (✓) | piecewise-polynomial collocation convergence for periodic BVPs of SD-DDEs | BVP, not IVP/WR |
+
+**Novelty check after reading the breaking-point literature (2026-11-24):** breaking-
+point location for implicit/state-dependent/neutral DDEs is established (Guglielmi–
+Hairer 2008; Bellen–Zennaro; Humphries–Eremin–Wang survey). Do not claim it. Claimable:
+(a) WR/Picard–Chebyshev for SD-DDE N-body + its convergence statement and measured
+iteration behaviour; (b) break alignment inside a spectral WR method and the measured
+M-rates (E8, E10); (c) the validation suite (128-bit references, LW physics checks).
 
 **Gap that survives the check:** Picard/waveform relaxation + Chebyshev for a
 *state-dependent* delay IVP, in particular a coupled N-body light-cone system, with
