@@ -1,0 +1,4 @@
+c=   8 naive      dE/dt=+3.368e-03 dL/dt=+1.153e-02 E change=+8.59e-01 L change=+1.54e+00 |engine-DDE|=3.6e-12 windows=90 wall=0.4s
+c=   8 aberration dE/dt=+8.819e-04 dL/dt=+6.968e-04 E change=+1.52e-01 L change=+8.59e-02 |engine-DDE|=6.9e-11 windows=101 wall=0.8s
+c=  32 naive      dE/dt=+3.541e-03 dL/dt=+6.709e-03 E change=+7.13e-01 L change=+8.64e-01 |engine-DDE|=2.0e-11 windows=91 wall=0.5s
+c=  32 aberration dE/dt=+2.011e-05 dL/dt=+1.425e-05 E change=+3.57e-03 L change=+1.79e-03 |engine-DDE|=4.2e-11 windows=97 wall=1.0s

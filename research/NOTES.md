@@ -367,6 +367,28 @@ orbit spirals out at a rate ∝ β. Sanity check only (not a precision benchmark
 also seen at t0: the consistent `A0` tangential component 0.0884 vs `Ωτ/2` = 0.0884.
 Script: `research/exp_e6_laplace.py` (`results/e6_laplace.json`).
 
+### E9 — long-time behaviour, 20 orbits (`exp_e9_longtime.py`, `results/e9_longtime.json`)
+Binary, ballistic φ, tracking (L2 naive / L3 aberration) + `accuracy_tol=1e-12`, window
+P/4, M = 24. Secular rates = linear fit over the run; accuracy vs DelayDiffEq (Vern9 +
+`dependent_lags`, tol 1e-14) at t = 20 P.
+
+| c | model | ΔE/|E₀| | ΔL/L₀ | dL/dt | |engine − DDE| at 20 P |
+|---|---|---|---|---|---|
+| 8 | naive | +0.86 | +1.54 | 1.2e-2 | 3.6e-12 |
+| 8 | aberration | +0.15 | +0.086 | 7.0e-4 | 6.9e-11 |
+| 32 | naive | +0.71 | +0.86 | 6.7e-3 | 2.0e-11 |
+| 32 | aberration | +3.6e-3 | +1.8e-3 | 1.4e-5 | 4.2e-11 |
+
+- Long-time agreement with the independent solver: 4e-12…7e-11 after 20 orbits.
+- Aberration model: residual secular torque drops 49× for 4× larger c, i.e. ∝ c^−2.8 ≈
+  **β³** — consistent with the expansion `x_j(t−τ) + τ v_j(t−τ) = x_j(t) − τ²a_j/2 +
+  τ³ȧ_j/3 + …`: the τ² term is radial (no torque), the first tangential term is τ³ȧ.
+  (Scaling agreement, not a derivation — derive the β³ coefficient.)
+- Naive model: run-averaged rates are not representative (the orbit changes by O(1));
+  its initial rate ∝ 1/c is verified in E6.
+- Framing consequence for the paper: the "aberration" model is *not* conservative,
+  only higher order (β³) — state it that way; never call it physical gravity.
+
 ## 5. Bugs found and fixed on this branch (engine)
 
 1. **Segmented batch `propagate(n_segments>1)` used a ballistic past at every segment
@@ -427,7 +449,7 @@ Findings that contradict the v0.3.0 README (fix README before any public claim):
       clamps to the oldest node (2e-4 error with `buffer_safety=1.0`; 0 clamps at the
       default 2.5) — interpolate/extrapolate instead, or raise.
 - [x] Scaling with N: vectorised (E7). GPU/Colab only if the paper wants N ≥ 100.
-- [ ] Long-time runs (many orbits): aberration-model conservation.
+- [x] Long-time runs (E9). [ ] derive the β³ secular coefficient of the aberration model.
 - [ ] Verify every (?) citation in §1; read Hale 2024 and the 2023 constant-delay
       Chebyshev–Picard paper in full and state the delta precisely.
 - [ ] RADAR5 / ddesd comparison (optional; DelayDiffEq is the strongest open baseline).
@@ -444,6 +466,7 @@ cd ~/aura-volterra-engine
 .venv/bin/python research/exp_e7_scaling.py 3 4 6 8 12 16  # ~6 min (N=16 WR-C dominates)
 .venv/bin/python research/exp_e6_laplace.py            # ~10 s
 .venv/bin/python research/exp_e8_break_order.py        # ~30 s
+.venv/bin/python research/exp_e9_longtime.py           # ~30 s
 .venv/bin/python research/exp_e2_convergence_theory.py # ~3 s
 .venv/bin/python research/exp_e2b_limits.py            # ~7 s
 .venv/bin/python research/exp_e5_breaks.py             # ~1 min (+ Julia refs, cached)
