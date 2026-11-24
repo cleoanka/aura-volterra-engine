@@ -24,7 +24,13 @@ on the converged iterate and ending windows there restores spectral convergence
 coupling, +1 for velocity coupling); (iii) validation against DelayDiffEq.jl in 128-bit
 arithmetic: comparable RHS cost, but machine-precision accuracy that the step-marching
 solver does not reach at any tolerance, even with its discontinuity tracking on —
-whose API cannot express the implicit light-cone lag.
+whose API cannot express the implicit light-cone lag; (iv) a physical, **neutral**
+SD-DDE — the classical electrodynamic two-body problem (Liénard–Wiechert, relativistic):
+solved to 1e-16 (DelayDiffEq best 6e-14), the order rule's neutral prediction (no
+smoothing; accuracy set by tracked levels, not M) confirmed, and the 1/c³ mutual
+radiation damping reproduced analytically. Honest limits: fixed windows are unsafe near
+close encounters (error control required), break tracking scales ∝ N² per level, and
+adaptive steppers win in RHS count through close encounters.
 
 ---
 
