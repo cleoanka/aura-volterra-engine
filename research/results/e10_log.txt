@@ -3,9 +3,9 @@
    L=  1 windows=  5  M=16:2.2e-08  M=24:1.9e-08  M=32:1.7e-08  M=48:1.7e-08
    L=  2 windows=  6  M=16:1.6e-10  M=24:1.6e-10  M=32:1.7e-10  M=48:1.7e-10
    L=  4 windows=  7  M=16:1.6e-14  M=24:5.7e-15  M=32:9.3e-15  M=48:1.1e-14
-   L=  6 windows=  8  M=16:1.1e-16  M=24:2.2e-16  M=32:2.2e-16  M=48:1.4e-16
-   L=  8 windows=  9  M=16:1.7e-16  M=24:2.8e-16  M=32:1.4e-16  M=48:9.7e-17
-   L= 50 windows=  9  M=16:1.7e-16  M=24:2.8e-16  M=32:1.4e-16  M=48:9.7e-17
+   L=  6 windows=  8  M=16:1.1e-16  M=24:2.2e-16  M=32:2.2e-16  M=48:5.6e-17
+   L=  8 windows=  9  M=16:1.1e-16  M=24:2.8e-16  M=32:1.4e-16  M=48:0.0e+00
+   L= 50 windows=  9  M=16:1.1e-16  M=24:2.8e-16  M=32:1.4e-16  M=48:0.0e+00
 (b) DelayDiffEq neutral (Float64)
    Vern9      tol=1e-08 err=1.0e-07 nf=962 wall=0.070s
    Vern9      tol=1e-10 err=5.4e-09 nf=1506 wall=0.138s
