@@ -442,6 +442,23 @@ Engineering needed for the neutral case (both are generic, also used by gravity 
   (only ~6e-8 accurate); a Newton step on `g(t_end) = t_end − τ(t_end) − d` with the
   truncated window's Chebyshev τ lands the window end on the root to ~1e-15.
 
+### E11 — LW physics check: mutual radiation damping (`exp_e11_lw_radiation.py`)
+To O(1/c²) the LW two-body problem is conservative Darwin dynamics; the first
+non-conservative term is the 1/c³ cross term `F_i = (2/3c³) q_i q_j ȧ_j` (the model has no
+self-force). Circular ±1 binary: `ȧ = −Ω²v` ⇒ `dE_Darwin/dt = −(4/3)Ω²v²/c³ = −1.333/c³`
+— exactly half the Larmor dipole power (the other half would be the self-force).
+Engine (track all levels, M = 24, slope of the Darwin energy on t ∈ [1, 3]):
+
+| c | engine | predicted | ratio |
+|---|---|---|---|
+| 8 | −2.508e-3 | −2.604e-3 | 0.963 |
+| 16 | −3.188e-4 | −3.255e-4 | 0.979 |
+| 32 | −4.033e-5 | −4.069e-5 | 0.991 |
+| 64 | −5.067e-6 | −5.086e-6 | 0.996 |
+
+Ratio → 1 with a ~1/c correction (next order). Confirms the LW implementation down to
+the radiation-reaction order — it is real classical electrodynamics, not a toy.
+
 ## 5. Bugs found and fixed on this branch (engine)
 
 1. **Segmented batch `propagate(n_segments>1)` used a ballistic past at every segment
@@ -506,8 +523,8 @@ Findings that contradict the v0.3.0 README (fix README before any public claim):
 - [ ] Verify every (?) citation in §1; read Hale 2024 and the 2023 constant-delay
       Chebyshev–Picard paper in full and state the delta precisely.
 - [ ] RADAR5 / ddesd comparison (optional; DelayDiffEq is the strongest open baseline).
-- [x] Physical SD-DDE: Liénard–Wiechert two-body, neutral (E10). [ ] radiation/energy
-      balance check; N > 2 charges; compare with Driver's existence results.
+- [x] Physical SD-DDE: Liénard–Wiechert two-body, neutral (E10); radiation damping
+      verified (E11). [ ] N > 2 charges; relate to Driver's existence/uniqueness results.
 - [ ] arXiv: a first submission in math.NA / physics.comp-ph needs an endorser.
 
 ## 7. Reproduce
@@ -521,6 +538,7 @@ cd ~/aura-volterra-engine
 .venv/bin/python research/exp_e8_break_order.py        # ~30 s
 .venv/bin/python research/exp_e9_longtime.py           # ~30 s
 .venv/bin/python research/exp_e10_lienard_wiechert.py  # ~1 min
+.venv/bin/python research/exp_e11_lw_radiation.py      # ~5 s
 .venv/bin/python research/exp_e2_convergence_theory.py # ~3 s
 .venv/bin/python research/exp_e2b_limits.py            # ~7 s
 .venv/bin/python research/exp_e5_breaks.py             # ~1 min (+ Julia refs, cached)

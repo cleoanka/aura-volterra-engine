@@ -1,0 +1,4 @@
+c=   8 dE_Darwin/dt engine=-2.5083e-03 predicted=-2.6042e-03 ratio=0.9632
+c=  16 dE_Darwin/dt engine=-3.1876e-04 predicted=-3.2552e-04 ratio=0.9792
+c=  32 dE_Darwin/dt engine=-4.0332e-05 predicted=-4.0690e-05 ratio=0.9912
+c=  64 dE_Darwin/dt engine=-5.0668e-06 predicted=-5.0863e-06 ratio=0.9962
