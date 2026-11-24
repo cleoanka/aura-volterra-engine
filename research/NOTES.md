@@ -114,6 +114,45 @@ Consequences (testable):
 
 For the binary, `L = 2Ω²` (radial tidal eigenvalue, ∞-norm), so `x = √2 ΩW`.
 
+**Why retardation speeds Picard up (E2, measured + explained).** Binary, plain Picard,
+tol 1e-12, iterations vs c at fixed W (inline sweep, 2026-11-24):
+
+| W | c = 1e9 | 1000 | 100 | 32 | 16 | 8 | 4 |
+|---|---|---|---|---|---|---|---|
+| 0.5 orbit | 13 | 13 | 13 | 12 | 12 | 11 | 10 |
+| 2 orbits | 31 | 31 | 28 | 24 | 20 | 16 | 12 |
+
+Monotone in τ and → the ODE count as c → ∞. The naive "t < nτ support" argument is
+irrelevant here (W/τ = 71). Refined bound: split the Lipschitz constant into the
+instantaneous self part `L_s` (dependence on `x_i(t)`) and the delayed cross part `L_c`
+(on `x_j(t−τ)`). Each Picard step applies `K2` with either part; a term with m cross
+applications has kernel `(t − s − mτ)_+^{2n−1}/(2n−1)!`, so
+
+```
+E_n ≤ E_0 Σ_m C(n,m) L_s^{n−m} L_c^m (W − mτ)_+^{2n} / (2n)!
+```
+
+The shift enters with power 2n, so the bound does decrease with τ. **Evaluated
+numerically** (`L_s = L_c = 2`, ratio 1e-12) — bound / observed iterations:
+
+| W | c = 1e9 | 100 | 32 | 16 | 8 | 4 |
+|---|---|---|---|---|---|---|
+| 0.5 orbit | 15 / 13 | 15 / 13 | 14 / 12 | 14 / 12 | 13 / 11 | 13 / 10 |
+| 2 orbits | 35 / 31 | 35 / 28 | 34 / 24 | 32 / 20 | 31 / 16 | 29 / 12 |
+
+Verdict: right direction, tight for short windows (constant offset 2–3), but it explains
+only a fraction of the speed-up on long windows (35→29 predicted vs 31→12 observed). My
+first heuristic `exp(−n²τ/W)` overstated it. **Unexplained remainder.** Candidate (not
+verified): phase — in the rotating binary the delay rotates the cross error mode by
+`Ωτ`, and a magnitude-only Lipschitz bound cannot see that cancellation. Tried: radial
+infall (W = 0.6) and head-on approach (W = 1.5), c = 1e9…4 → 8→7 and 7→6 iterations,
+i.e. little effect — but **inconclusive**: non-rotating configurations only allow short
+windows before collision, where even the rotating binary shows a small effect (13→10).
+A fair test needs a long-window non-rotating case (e.g. a softened, oscillating radial
+pair through the centre) or an analysis of the linearised error operator in the
+co-rotating frame.
+
+
 TODO: make the `X_M` invariance + the aberration model (depends on `v_j(t−τ)`, needs a
 bound on `x''`) rigorous; check the constant in `κ(β)`; discrete (CGL) version: the
 discrete operator `K2 = C·C` is strictly lower-triangular-like? (No — CGL `B` is dense
@@ -134,10 +173,8 @@ Binary, c = 8 (β ≈ 0.088), tol 1e-12, CGL nodes `max(24, 14ΩW)`.
 - Bound holds everywhere and is nearly tight for the ODE case (31 vs 35).
 - Measured ratios lie below `x²/((2n+1)(2n+2))` and decay superlinearly as predicted.
   Effective `x_eff ≈ 0.83 x` (none), smaller with delay.
-- **Retarded converges faster than instantaneous** (16 vs 31 at 2 orbits). Hypothesis:
-  the delayed cross-coupling is a shifted Volterra kernel, which adds extra contraction.
-  Needs a clean explanation; possible theorem: the cross term contributes
-  `(t−s−τ)_+` kernels.
+- **Retarded converges faster than instantaneous** (16 vs 31 at 2 orbits) — explained in
+  §3: shifted-kernel bound gets the direction, only part of the size; remainder open.
 - The predicted transient amplification `e^x/√(2πx)` was **not** observed (error
   decreased monotonically from the Taylor predictor). Bound is worst case; the
   measurement is relative to a large predictor error, so it is not a strong test.
@@ -229,6 +266,36 @@ Without tracking DelayDiffEq is non-monotone in tol (binary naive Vern9: tol 1e-
 the binary, dearer for the triple at loose tolerance). The clear wins are **attainable
 accuracy** (machine precision) and **robustness** (monotone in M). Do not claim speed.
 
+### E8 — breaking-point order rule, measured (`exp_e8_break_order.py`)
+Single window [0, 0.2] containing exactly one breaking point (ξ₁ ≈ τ = 0.1245, binary
+c = 8), no tracking, M = 8…96, error at W vs 128-bit reference (tol 1e-20):
+
+| model + φ | predicted jump order k | fitted slope of log err vs log M | k − 1 |
+|---|---|---|---|
+| aberration + ballistic | 3 | −2.21 | 2 |
+| naive + ballistic | 4 | −3.17 | 3 |
+| aberration + C² | 4 | −3.50 | 3 |
+| naive + C² | 5 | −4.13 | 4 |
+
+Ordering exactly as predicted (including the predicted tie naive+ballistic ≈
+aberration+C²), and every slope ≈ **−(k − 1)**. Errors are non-monotone in M (typical
+for a kink at a non-node point), so slopes are least-squares fits.
+
+**Lemma (draft, to prove).** Let `φ` have a jump in the `k_φ`-th derivative at `t0`
+(`k_φ = 2` ballistic, `3` C²) and let the force depend on the source's `q`-th
+derivative (`q = 0` naive, `1` aberration). Then the level-ℓ breaking point carries a
+jump in `x^{(k_ℓ)}`, `k_ℓ = k_φ + ℓ(2 − q)`, and an un-split Chebyshev–Picard window
+containing it has end-point error `O(M^{−(k_ℓ − 1)})`.
+Proof sketch: (i) propagation — `x_j(t − τ(t))` inherits the jump of `x_j^{(k)}` at the
+root of `t − τ(t) = d` (transversal, since `1 − τ' > 0`); a q-th derivative lowers it by
+q; double integration raises it by 2. (ii) rate — the window error is the
+Clenshaw–Curtis-type quadrature error of `∫∫ f` with `f = x''`; `f^{(k−2)}` is of
+bounded variation, and CC quadrature with ν-th derivative BV converges as
+`O(M^{−ν−1})` (Trefethen, *ATAP*, Ch. 19) ⇒ `O(M^{−(k−1)})`.
+Consequence: aligning windows with levels ℓ < L leaves only jumps of order
+`k_L`, i.e. error `O(M^{−(k_L−1)})` — with L = 2 naive (k=6 → M^{-5}) / L = 3 aberration
+(k=5 → M^{-4}), matching where E5 reaches round-off.
+
 ### E7 — scaling with N, error control (`exp_e7_scaling.py`, `results/e7_log.txt`)
 Bound random clusters (`problems.cluster`, N equal masses, softening 0.05, c = 10,
 T = 1, naive retardation). Reference: DelayDiffEq Vern9 tol 1e-14 + `dependent_lags`
@@ -318,10 +385,10 @@ Findings that contradict the v0.3.0 README (fix README before any public claim):
 
 ## 6. Open items / what a referee will ask
 
-- [ ] Lemma for the breaking-point order rule (E5) + proof; compare with Bellen–Zennaro
-      discontinuity propagation for SD-DDEs.
+- [~] Lemma for the breaking-point order rule: measured (E8), proof sketch written;
+      make rigorous + compare with Bellen–Zennaro discontinuity propagation.
 - [ ] Rigor of §3: invariant set `X_M`, aberration model (needs bounded `x″`), the
-      discrete CGL operator (`ρ(K2)`), and why delay *speeds up* Picard (E2).
+      discrete CGL operator (`ρ(K2)`), and evaluate the shifted-kernel bound of §3 against E2.
 - [ ] Tracking cost for larger N (E7: windows ∝ N²). Options: split only the affected
       body (multirate WR: windows per body), or skip breaks whose jump order exceeds
       what M can resolve (order ≥ ~5 with C² φ is already below 1e-10 at M = 16).
