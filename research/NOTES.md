@@ -30,7 +30,7 @@ whose API cannot express the implicit light-cone lag.
 
 ## 1. Literature position (checked 2026-11-24)
 
-Sources: agy survey (`scratchpad`, not kept) + my own WebSearch cross-check.
+Sources: an LLM-assisted literature survey, cross-checked by web search.
 **Citations marked (✓) were seen in a search result; (?) not yet verified — verify each
 before citing.**
 
