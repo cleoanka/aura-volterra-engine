@@ -363,12 +363,19 @@ class AuraApp(ctk.CTk):
         self.play_btn.configure(text="⏸  Pause")
 
         ok = "✓ CONVERGED" if res.converged else "△ PARTIAL"
-        worst = max(res.residuals) if res.residuals else float("nan")
+        # single window: residuals is the iteration history -> report the final
+        # one; segmented: one final residual per segment -> report the worst
+        if cfg.n_segments <= 1:
+            res_label = "final residual"
+            res_val = res.residuals[-1] if res.residuals else float("nan")
+        else:
+            res_label = "worst residual"
+            res_val = max(res.residuals) if res.residuals else float("nan")
         self.status.configure(
             text_color=ACCENT,
             text=(f"{ok}  ·  {dt*1000:.0f} ms\n"
                   f"bodies {res.n_bodies}   windows {cfg.n_segments}\n"
-                  f"worst residual {worst:.1e}\n"
+                  f"{res_label} {res_val:.1e}\n"
                   f"energy drift  {res.energy_drift:.2e}"),
         )
         if self._pending:                       # a change arrived mid-solve
