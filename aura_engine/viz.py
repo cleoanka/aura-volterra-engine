@@ -50,6 +50,26 @@ def auto_limits(traj_disp: np.ndarray, hint: float | None = None) -> tuple[float
     return half, center
 
 
+def _model_labels(cfg, eih_label: str = "EIH-1PN") -> list[str]:
+    """Labels for the force model the solver actually runs.
+
+    Mirrors the engine's resolution (explicit ``pn``/``retardation`` win over the
+    ``use_*`` flags) and ``VolterraSystem.accelerations``: EIH is a complete 1PN
+    acceleration that replaces the (retarded) Newtonian force, so no retardation
+    label is shown while EIH is on, whatever the toggle says.
+    """
+    pn = getattr(cfg, "pn", None) or ("eih" if cfg.use_pn else "none")
+    ret = getattr(cfg, "retardation", None) or ("aberration" if cfg.use_retardation else "none")
+    if pn == "eih":
+        return [eih_label]
+    if ret == "lw":                     # the LW field also bypasses reduced PN
+        return ["LIENARD-WIECHERT"]
+    labels = {"naive": ["RETARDED-c NAIVE"], "aberration": ["RETARDED-c"]}.get(ret, [])
+    if pn == "reduced":
+        labels.append("REDUCED-PN")
+    return labels
+
+
 def _starfield(ax, half: float, center: np.ndarray, seed: int = 7) -> None:
     """Scatter a static, twinkly star background (captured in the blit bg)."""
     rng = np.random.default_rng(seed)
@@ -169,11 +189,7 @@ class TrajectoryScene:
     def _status_text(self, phase_label: str) -> str:
         cfg, res = self.config, self.result
         core = "SPECTRAL·MCPI" if getattr(cfg, "scheme", "") == "chebyshev" else "TRAPEZOID"
-        model = []
-        if getattr(cfg, "pn", None) == "eih" or cfg.use_pn:
-            model.append("EIH-1PN")
-        if cfg.use_retardation:
-            model.append("RETARDED-c")
+        model = _model_labels(cfg)
         model_s = " ".join(model) if model else "NEWTONIAN"
         return (
             f"PROJECT AURA — VOLTERRA ENGINE\n"
@@ -333,11 +349,7 @@ class ContinuousScene:
     def _status_text(self) -> str:
         cfg, w = self.config, self.last
         core = "SPECTRAL·MCPI" if getattr(cfg, "scheme", "") == "chebyshev" else "TRAPEZOID"
-        flags = []
-        if getattr(cfg, "pn", None) == "eih" or cfg.use_pn:
-            flags.append("EIH")
-        if cfg.use_retardation:
-            flags.append("RETARDED-c")
+        flags = _model_labels(cfg, eih_label="EIH")
         model = " ".join(flags) if flags else "NEWTONIAN"
         t_disp = w.t[-1] / cfg.time_unit
         buf_disp = w.buffer_span / cfg.time_unit
