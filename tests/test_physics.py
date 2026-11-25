@@ -466,3 +466,23 @@ def test_lw_retardation_name_accepted():
                                 window_span=0.25, window_samples=16, iterations=5,
                                 retardation="lw", scheme="trapezoid",
                                 charges=[1.0, -1.0])
+
+
+def test_segmented_propagate_reports_iterations_used(monkeypatch):
+    # propagate(n_segments>1) used to echo the requested budget instead of
+    # the iterations its segments actually used
+    cfg = presets.chaos()
+    budget, nseg = cfg.iterations, 3
+    s = cfg.build(retardation="none", t_span=1.2, n_samples=48 * nseg)
+    per_seg, relax = [], VolterraSystem.relax
+
+    def spy(self, *a, **kw):
+        r = relax(self, *a, **kw)
+        per_seg.append(r.iterations)
+        return r
+
+    monkeypatch.setattr(VolterraSystem, "relax", spy)
+    res = s.propagate(budget, n_segments=nseg, record_history=False)
+    assert res.converged and len(per_seg) == nseg
+    assert res.iterations == max(per_seg)
+    assert 1 <= res.iterations < budget

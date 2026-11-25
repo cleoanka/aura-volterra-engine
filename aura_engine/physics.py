@@ -676,7 +676,7 @@ class VolterraSystem(_EngineCore):
         seg_n = max(8, self.n // n_segments)
         R0, V0 = self.R0.copy(), self.V0.copy()
         t_parts, R_parts, V_parts, residuals = [], [], [], []
-        converged_all, t_off = True, self.t0
+        converged_all, t_off, used = True, self.t0, 0
         # the retarded past of segment k is the *converged* trajectory of the
         # earlier segments (plus the initial history before t0) -- not a
         # ballistic extrapolation from the segment's own epoch.
@@ -691,6 +691,7 @@ class VolterraSystem(_EngineCore):
             V_parts.append(r.velocity[start:])
             residuals.append(r.residuals[-1] if r.residuals else float("nan"))
             converged_all = converged_all and r.converged
+            used = max(used, r.iterations)           # worst segment, actually used
             R0, V0 = r.trajectory[-1].copy(), r.velocity[-1].copy()
             t_off += seg_span
         t = np.concatenate(t_parts); R = np.concatenate(R_parts); V = np.concatenate(V_parts)
@@ -702,7 +703,7 @@ class VolterraSystem(_EngineCore):
             energy_drift=_scalar_drift(e),
             momentum_drift=_vector_drift(linear_momentum(self.masses, V), vscale),
             angmom_drift=_vector_drift(L, float(np.linalg.norm(L[0]))),
-            converged=converged_all, iterations=iterations)
+            converged=converged_all, iterations=used)
 
 
 # --------------------------------------------------------------------------- #
