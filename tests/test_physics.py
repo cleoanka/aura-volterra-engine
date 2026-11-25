@@ -136,6 +136,27 @@ def test_newtonian_chaos_machine_precision():
     assert res.momentum_drift < 1e-9
 
 
+def _asymmetric_chaos(model):
+    # The chaos preset is an exactly symmetric homographic orbit, so total
+    # momentum is zero by symmetry under ANY force model (naive retardation
+    # included) and a momentum assert there cannot fail. Break the symmetry.
+    cfg = presets.chaos()
+    cfg.bodies[0].velocity = cfg.bodies[0].velocity * 1.05
+    return cfg.build(retardation=model).propagate(
+        cfg.iterations, n_segments=cfg.n_segments, record_history=False)
+
+
+def test_newtonian_asymmetric_triple_conserves():
+    res = _asymmetric_chaos("none")
+    assert res.converged
+    assert res.energy_drift < 1e-6          # measured ~5e-9
+    assert res.momentum_drift < 1e-9        # measured ~3e-16
+    assert res.angmom_drift < 1e-6          # measured ~3e-10
+    # the same check is sensitive here: naive retardation breaks Newton's 3rd
+    # law and its momentum drift shows up (~1.5e-2; ~1e-16 on the symmetric preset)
+    assert _asymmetric_chaos("naive").momentum_drift > 1e-4
+
+
 # --------------------------------------------------------------------------- #
 # EIH 1PN: stable, momentum-conserving, prograde precession
 # --------------------------------------------------------------------------- #
