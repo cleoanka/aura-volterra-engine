@@ -382,7 +382,7 @@ whichever model you select.
 - **Sleek dark cockpit** (`customtkinter`) with an embedded, blitted Matplotlib canvas and a live physics HUD.
 - **Live controls:** scenario selector, relaxation‑depth slider, damping `w`, retardation & 1PN switches, continuous‑mode switch, playback speed, play/pause/restart, sandbox re‑roll.
 - **Non‑blocking:** batch solves and the infinite stream both run on a worker thread + bounded queue; the UI never freezes.
-- **Headless tooling:** GIF renderer (incl. `continuous`), tuning harness, and a `pytest` validation suite (34 tests).
+- **Headless tooling:** GIF renderer (incl. `continuous`), tuning harness, and a `pytest` validation suite (40 tests).
 
 ---
 
@@ -416,7 +416,7 @@ python scripts/render_gif.py all              # regenerate assets/*.gif (+ conti
 python scripts/render_gif.py "Deep Chaos (3-Body)" out.gif
 python scripts/render_gif.py continuous "Deep Chaos (3-Body)" cont.gif   # infinite-run clip
 python scripts/tune.py                         # convergence / energy report
-python -m pytest -q                            # run the validation suite (34 tests)
+python -m pytest -q                            # run the validation suite (40 tests)
 ```
 
 In the app, flip **Continuous Mode (∞ infinite run)** to switch from the
