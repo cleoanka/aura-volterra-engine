@@ -22,7 +22,7 @@ from .physics import (
 )
 from .presets import PRESET_NAMES, PRESETS, PresetConfig, get_preset
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "Body",

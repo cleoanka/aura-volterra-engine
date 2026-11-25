@@ -12,6 +12,11 @@ Chebyshev (MCPI)** core, with aberration‑corrected **retarded gravity**, full
 **Einstein–Infeld–Hoffmann 1PN** dynamics, and an **infinite‑horizon Continuous
 Mode** that streams forever on `O(1)` memory.
 
+**v0.4** treats finite‑speed interactions as what they are — a **state‑dependent
+delay differential equation** — with breaking‑point‑aligned windows, a‑posteriori
+error control, and a **Liénard–Wiechert** (classical electrodynamics) model, all
+validated against DelayDiffEq.jl in 128‑bit arithmetic.
+
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple&logoColor=white)
 ![NumPy](https://img.shields.io/badge/NumPy-vectorized-013243?logo=numpy&logoColor=white)
@@ -19,7 +24,8 @@ Mode** that streams forever on `O(1)` memory.
 ![Backend](https://img.shields.io/badge/BLAS-Accelerate-8a2be2)
 ![License](https://img.shields.io/badge/license-MIT-22c55e)
 ![Continuous](https://img.shields.io/badge/mode-%E2%88%9E%20continuous-ffd15d)
-![Status](https://img.shields.io/badge/status-proof--of--concept-9b5cff)
+![Tests](https://img.shields.io/badge/tests-31%20passing-22c55e)
+![Status](https://img.shields.io/badge/status-research-9b5cff)
 
 <img src="assets/solar.gif" width="46%"/> <img src="assets/chaos.gif" width="46%"/>
 
@@ -180,18 +186,18 @@ $$
   the loop can spin for a million windows on a laptop.
 - **Bounded, non‑accumulating cost.** Each window costs the *same* $O(W^2)$; there is
   no $O(t^2)$ blow‑up and no ever‑lengthening memory tape to interpolate.
-- **Drift resistance.** Because each window is solved as a *boundary‑anchored
-  integral equation* (not a chain of local extrapolations), truncation error does
-  not compound the way it does in RK‑style marchers — the relaxation re‑anchors to
-  a fresh epoch every window.
+- **Spectral accuracy per window.** Each window is solved as a whole on Chebyshev
+  nodes, so a smooth window is accurate to round‑off. Errors still carry across
+  window seams (as for any one‑step method); 20‑orbit runs agree with an independent
+  DDE solver to `4e‑12 … 7e‑11` (`research/NOTES.md`, E9).
 - **Holistic delay resolution.** Within a window the retarded potentials still see
   the *entire* trajectory at once (global), and the sliding buffer carries the real
   past across the seam — so finite‑speed gravity is resolved consistently across
   window boundaries, not faked by ballistic guessing.
 
-The result is the numerical character of Waveform Relaxation — global, drift‑
-resistant, delay‑exact — running with the runtime and memory profile of a real‑time
-flight computer. Flip **Continuous Mode** on and it never stops.
+The result is the numerical character of Waveform Relaxation — global and
+spectrally accurate per window — with a fixed memory footprint. Flip **Continuous
+Mode** on and it never stops.
 
 > Requirement: the design assumes $\Delta_\text{buf} \le W$ (the longest light delay
 > is shorter than one window), which holds for every preset. AURA sizes the buffer
@@ -232,7 +238,8 @@ with the light‑cone equation solved by **Newton iteration**. On the chaotic tr
 | `"aberration"` (physical, default) | **`8.6e‑3`** | **`2.1e‑3`** |
 
 Two orders of magnitude better conservation — and you can flip to `"naive"` to
-*watch* the artifact appear.
+*watch* the artifact appear. The residual secular torque of the aberration model is
+`G m² θ³ / 6d` (a `β³` law, derived and matched to 0.01 % at `c = 64`, E6).
 
 ### 3 · Full Einstein–Infeld–Hoffmann 1PN — `pn="eih"`
 
@@ -259,15 +266,68 @@ Every solve reports **energy, linear‑momentum and angular‑momentum drift**. 
 velocity fed into the force model is the Volterra velocity `V = V₀ + C·A` (not a
 finite difference), and the predictor is the Taylor form `r₀ + v₀t + ½a₀t²` — both
 cut iterations and keep the physics self‑consistent. Interpolation of the retarded
-past is **barycentric‑Lagrange** (spectral) on CGL nodes, **cubic‑Hermite** on the
-delay buffer.
+past is **barycentric‑Lagrange** (spectral) on CGL nodes — both inside the window
+and in the stored history of converged windows.
+
+---
+
+## Retarded N‑body as a state‑dependent DDE (v0.4)
+
+With a finite propagation speed the force on body `i` depends on body `j` at the
+retarded time `t − τ_ij(t)`, where the delay solves the light‑cone equation
+`τ_ij = |x_i(t) − x_j(t − τ_ij)| / c` — it depends on the unknown trajectory itself.
+That is a **state‑dependent delay differential equation (SD‑DDE)**. v0.4 makes the
+engine treat it as one, and measures the result against
+[DelayDiffEq.jl](https://github.com/SciML/DelayDiffEq.jl) run in **128‑bit**
+arithmetic (`research/reference_dde.jl`).
+
+| Piece | What it does | Option |
+|---|---|---|
+| **Spectral segment history** | every converged window is kept as Chebyshev nodal data and read back by barycentric interpolation; pruned beyond `η·τ_max` | always on |
+| **Breaking‑point tracking** | the start‑up kink at `t0` propagates along `t − τ_ij(t) = t0`, then along its images; window ends are landed on those roots by Newton, with one‑sided history lookups at the joins | `track_breaks=L` |
+| **A‑posteriori error control** | trailing Chebyshev coefficients of the velocities (Galilean invariant); unresolved windows are halved | `accuracy_tol=…` |
+| **Consistent initial history** | a C² past `φ(t) = x0 + v0 t + ½A0 t²` with `A0` the retarded force it induces | `initial_A0=…` |
+| **Liénard–Wiechert model** | full retarded EM fields (velocity + radiation terms) with relativistic mechanics — a **neutral** SD‑DDE, since the radiation field needs the source *acceleration* at the retarded time | `retardation="lw", charges=[…]` |
+
+**Headline numbers** (all from scripts in `research/`, details in
+[`research/NOTES.md`](research/NOTES.md)):
+
+| Experiment | Result |
+|---|---|
+| Binary / triple, naive & aberration gravity (E5) | breaking‑point alignment: error `~1e‑6 → ~1e‑15` vs the 128‑bit reference; `L = 2` (naive) / `L = 3` (aberration) suffice |
+| Work–precision vs DelayDiffEq (E3) | comparable RHS count; DelayDiffEq bottoms out at `~1e‑13` at any tolerance, even with discontinuity tracking |
+| Break order rule (E8) | jump order grows by `2 − q` per level (`q = 0` naive, `1` aberration, `2` neutral); error `∝ M^{−(k−1)}` measured |
+| Classical electrodynamic two‑body (E10) | `~1e‑16` vs reference (DelayDiffEq best `6.3e‑14`); neutral prediction confirmed — accuracy set by tracked levels, not node count |
+| Mutual radiation damping (E11) | `dE_Darwin/dt` → analytic `−(4/3)Ω²v²/c³`, ratio `0.963 → 0.996` as `c` grows |
+| Scaling to `N = 16` (E7) | with error control the tolerance is met at every `N`, faster than DelayDiffEq in wall time from `N ≈ 12`; fixed windows are **not** safe through close encounters |
+| 20 orbits (E9) | agreement with an independent solver `4e‑12 … 7e‑11` |
+
+```python
+from aura_engine import Body, PiecewiseVolterraStream
+
+bodies = [Body("a", 1.0, [ 0.5, 0, 0], [0,  0.5, 0]),       # G = m = d = 1
+          Body("b", 1.0, [-0.5, 0, 0], [0, -0.5, 0])]
+stream = PiecewiseVolterraStream(
+    bodies, G=1.0, c=8.0, softening=0.0, use_retardation=True, use_pn=False,
+    retardation="aberration",          # "naive" | "aberration" | "lw" (+ charges=[...])
+    window_span=0.125, window_samples=32, iterations=200, tol=1e-13,
+    accelerator="picard", relaxation=1.0,     # undamped Picard converges fastest
+    track_breaks=3,                    # land window ends on DDE breaking points
+    accuracy_tol=1e-12)                # halve windows the nodes cannot resolve
+while stream.t_epoch < 1.0:
+    window = stream.step()             # window.t, window.trajectory, window.velocity
+```
+
+Rule of thumb from E7: for many bodies use a C² initial history plus `accuracy_tol`;
+turn on `track_breaks` for few bodies when machine precision is the goal (the number
+of breaks grows as `N²` per level).
 
 ---
 
 ## Is the physics real? (yes — and measured)
 
 This repo does **not** hand‑wave. Every row is checked in `tests/test_physics.py`
-(19 tests) and reproduced by `python scripts/tune.py`:
+(31 tests) and reproduced by `python scripts/tune.py`:
 
 | Property | Result |
 |---|---|
@@ -283,6 +343,11 @@ This repo does **not** hand‑wave. Every row is checked in `tests/test_physics.
 | **Continuous stream** window joins | `C⁰` continuity, gap `< 1e‑9` |
 | **Continuous stream** memory over 25+ windows | bounded (delay buffer never grows) |
 | **Continuous stream** momentum (aberration) | drift `< 1e‑6` |
+| Stream vs single global window (retarded) | agree to `< 1e‑6` |
+| Breaking‑point alignment | restores spectral convergence; no duplicate / sliver windows |
+| Vectorised retarded field vs per‑pair loop | equal to `1e‑16` (naive and aberration) |
+| **Liénard–Wiechert** `c → ∞` limit | equals the Coulomb orbit to `< 1e‑13` |
+| Error control through a close encounter | fixed windows off by `> 1e‑4`; controlled `< 1e‑7`, boost‑invariant |
 
 The retardation pair is the honest headline: with **instantaneous** gravity the
 spectral integrator conserves energy to machine precision *through chaotic close
@@ -291,9 +356,10 @@ artifact); and the **aberration‑corrected** model — the physically defensibl
 brings that back down by two orders of magnitude. The engine tells the truth about
 whichever model you select.
 
-> ⚠️ **Honesty note.** Even the aberration‑corrected retardation is a *linearised*
-> finite‑speed model, not full numerical relativity; the EIH term is 1PN (no 2PN /
-> spin / radiation‑reaction). What is rigorous is that each model conserves exactly
+> ⚠️ **Honesty note.** The aberration‑corrected gravity is a *linearised*
+> finite‑speed model, not numerical relativity; the EIH term is 1PN (no 2PN / spin /
+> radiation reaction). The Liénard–Wiechert model is exact classical
+> electrodynamics for point charges *without* self‑force. What is rigorous is that each model conserves exactly
 > what its symmetry says it should, and the diagnostics prove it.
 
 ---
@@ -302,13 +368,14 @@ whichever model you select.
 
 - **Spectral MCPI core:** Chebyshev–Gauss–Lobatto quadrature with barycentric interpolation — exponential accuracy, machine‑precision orbits.
 - **Physical retardation + full EIH 1PN:** aberration‑cancelling finite‑`c` gravity and momentum‑conserving post‑Newtonian dynamics, both measured.
+- **SD‑DDE machinery (v0.4):** spectral segment history, breaking‑point‑aligned windows, a‑posteriori error control, and a neutral Liénard–Wiechert electrodynamics model.
 - **Anderson‑accelerated relaxation** and live **energy / momentum / angular‑momentum** conservation diagnostics.
 - **∞ Continuous Mode:** Piecewise Volterra Windowing with a sliding delay buffer — runs *indefinitely* on `O(1)` memory, with adaptive window subdivision.
 - **Four presets:** Inner Solar System · Earth‑Moon‑Spacecraft · Deep Chaos 3‑body · randomised Sandbox.
 - **Sleek dark cockpit** (`customtkinter`) with an embedded, blitted Matplotlib canvas and a live physics HUD.
 - **Live controls:** scenario selector, relaxation‑depth slider, damping `w`, retardation & 1PN switches, continuous‑mode switch, playback speed, play/pause/restart, sandbox re‑roll.
 - **Non‑blocking:** batch solves and the infinite stream both run on a worker thread + bounded queue; the UI never freezes.
-- **Headless tooling:** GIF renderer (incl. `continuous`), tuning harness, and a `pytest` validation suite (19 tests).
+- **Headless tooling:** GIF renderer (incl. `continuous`), tuning harness, and a `pytest` validation suite (31 tests).
 
 ---
 
@@ -318,7 +385,7 @@ AURA needs a Python with working **Tcl/Tk** (the python.org framework build or
 Homebrew's `python-tk` both work). Then:
 
 ```bash
-git clone https://github.com/<you>/aura-volterra-engine.git
+git clone https://github.com/cleoanka/aura-volterra-engine.git
 cd aura-volterra-engine
 
 python3 -m venv .venv
@@ -342,7 +409,7 @@ python scripts/render_gif.py all              # regenerate assets/*.gif (+ conti
 python scripts/render_gif.py "Deep Chaos (3-Body)" out.gif
 python scripts/render_gif.py continuous "Deep Chaos (3-Body)" cont.gif   # infinite-run clip
 python scripts/tune.py                         # convergence / energy report
-python -m pytest -q                            # run the validation suite (17 tests)
+python -m pytest -q                            # run the validation suite (31 tests)
 ```
 
 In the app, flip **Continuous Mode (∞ infinite run)** to switch from the
@@ -359,13 +426,20 @@ aura-volterra-engine/
 ├── main.py                     # customtkinter cockpit (entry point)
 ├── aura_engine/
 │   ├── operators.py            # trapezoid + spectral Chebyshev (MCPI) operators, barycentric interp
-│   ├── physics.py              # engine core, EIH, retardation models, Anderson, VolterraSystem + stream
+│   ├── history.py              # ballistic / quadratic initial history + spectral segment history
+│   ├── physics.py              # engine core, EIH, retardation + LW models, Anderson, breaks, stream
 │   ├── presets.py              # the four scenarios + engine settings
 │   └── viz.py                  # shared scenes: TrajectoryScene (batch) + ContinuousScene (∞)
 ├── scripts/
 │   ├── render_gif.py           # headless GIF export (batch + `continuous`)
 │   └── tune.py                 # per-preset convergence/energy diagnostics
-├── tests/test_physics.py       # operators, orbit, energy, PN, streaming, preset tests
+├── tests/test_physics.py       # operators, orbit, energy, PN, streaming, SD-DDE, LW tests
+├── research/
+│   ├── NOTES.md                # research notes: theory, experiments E1–E11, bugs, open items
+│   ├── problems.py             # test problems + DelayDiffEq.jl reference wrapper
+│   ├── reference_dde.jl        # independent reference solver (Julia, optional BigFloat)
+│   ├── exp_e*.py               # one script per experiment
+│   └── results/                # their logs and JSON output
 ├── requirements.txt
 └── assets/                     # generated animations (incl. continuous.gif)
 ```
@@ -422,12 +496,18 @@ for window in stream:                 # never terminates; RAM stays O(1)
   `stream.history.clamped` (0 for all presets and research problems).
 - **Initial history & breaking points.** Retarded runs need a history `φ(t)` before
   `t0` (default: free motion). Its derivative jump propagates along `t − τ_ij(t) = t0`
-  and caps the spectral accuracy at ~1e-6…1e-9 unless the stream is built with
-  `track_breaks=2` (naive) / `3` (aberration), which aligns window ends with those
-  points and restores ~1e-15 agreement with a 128-bit DelayDiffEq.jl reference
-  (`research/NOTES.md`, E5).
-- **Retardation is linearised.** The aberration‑corrected model is `O(v/c)` correct,
-  not full numerical relativity; the EIH term is 1PN (no 2PN / spin / radiation).
+  and caps the spectral accuracy at ~1e-6…1e-9 unless `track_breaks` is on. Tracking
+  costs `∝ N²` windows per level, so it is for few bodies; for many, use a C² history
+  (`initial_A0`) and `accuracy_tol`.
+- **Fixed windows are not an accuracy guarantee.** Picard convergence is convergence
+  of the discrete problem. Without `accuracy_tol` a window can report `converged`
+  and be wrong near a close encounter (measured up to 1e-1, E7).
+- **Known open issue.** For an almost‑symmetric Liénard–Wiechert pair (mass ratio
+  `1 + ε`, `ε ≤ 1e‑3`) 32/48 nodes leave a `1e‑11 … 2e‑9` residual while 16 nodes are
+  exact; the root cause is not found yet (`research/NOTES.md` §5).
+- **Gravity retardation is linearised.** The aberration‑corrected model is `O(v/c)`
+  correct, not numerical relativity; the EIH term is 1PN (no 2PN / spin / radiation).
+  The LW model has no self‑force (Abraham–Lorentz–Dirac).
 - **Softening vs. regularisation.** A Plummer softening length regularises close
   encounters; Kustaanheimo–Stiefel / Sundman regularisation (true collision handling)
   is future work, as is a Barnes–Hut / FMM tree for large‑`N` (both deliberately
