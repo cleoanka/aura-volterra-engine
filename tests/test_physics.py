@@ -434,3 +434,35 @@ def test_accuracy_control_resolves_close_encounter_and_is_boost_invariant():
     assert np.abs(ctrl - fine).max() < 1e-7              # control fixes it
     assert np.abs(boosted - fine).max() < 1e-7
     assert abs(h0 - h1) <= 2                              # boost-invariant control
+
+
+# --------------------------------------------------------------------------- #
+# Model selectors are validated (a typo must not silently pick other physics)
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("kw", [{"retardation": "Aberration"}, {"pn": "EIH"},
+                                {"accelerator": "andersen"}])
+def test_unknown_model_names_rejected(kw):
+    with pytest.raises(ValueError, match="unknown"):
+        presets.chaos().build(**kw)
+    s = _stream("Deep Chaos (3-Body)")
+    with pytest.raises(ValueError, match="unknown"):
+        PiecewiseVolterraStream(s.bodies, G=1.0, c=18.0, softening=0.1,
+                                use_retardation=True, use_pn=False, relaxation=0.5,
+                                window_span=0.5, window_samples=16, iterations=5, **kw)
+
+
+def test_lw_retardation_name_accepted():
+    # "lw" is a valid model: the only errors are the missing charges / scheme
+    assert _lw_stream(c=10.0).retardation == "lw"
+    bodies = _binary_bodies()
+    with pytest.raises(ValueError, match="charges"):
+        PiecewiseVolterraStream(bodies, G=1.0, c=10.0, softening=0.0,
+                                use_retardation=True, use_pn=False, relaxation=1.0,
+                                window_span=0.25, window_samples=16, iterations=5,
+                                retardation="lw")
+    with pytest.raises(ValueError, match="charges"):
+        PiecewiseVolterraStream(bodies, G=1.0, c=10.0, softening=0.0,
+                                use_retardation=True, use_pn=False, relaxation=1.0,
+                                window_span=0.25, window_samples=16, iterations=5,
+                                retardation="lw", scheme="trapezoid",
+                                charges=[1.0, -1.0])

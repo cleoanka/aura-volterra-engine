@@ -62,6 +62,9 @@ from .operators import (
 from .history import BallisticHistory, SegmentHistory
 
 C_LIGHT = 2.99792458e8
+RETARDATIONS = ("none", "naive", "aberration", "lw")
+PN_MODELS = ("none", "reduced", "eih")
+ACCELERATORS = ("anderson", "picard")
 
 
 # --------------------------------------------------------------------------- #
@@ -319,6 +322,12 @@ class _EngineCore:
 
     def __init__(self, *, G, c, softening, relaxation, scheme, accelerator,
                  retardation, pn, anderson_depth=5):
+        # a typo here would silently select a different physics model
+        for name, value, allowed in (("retardation", retardation, RETARDATIONS),
+                                     ("pn", pn, PN_MODELS),
+                                     ("accelerator", accelerator, ACCELERATORS)):
+            if value not in allowed:
+                raise ValueError(f"unknown {name} {value!r}; choose from {allowed}")
         self.G = float(G)
         self.c = float(c)
         self.softening = float(softening)
@@ -326,7 +335,7 @@ class _EngineCore:
         self.w = float(relaxation)
         self.scheme = scheme
         self.accelerator = accelerator
-        self.retardation = retardation      # "none" | "naive" | "aberration"
+        self.retardation = retardation      # "none" | "naive" | "aberration" | "lw"
         self.pn = pn                         # "none" | "reduced" | "eih"
         self.anderson_depth = int(anderson_depth)
 
